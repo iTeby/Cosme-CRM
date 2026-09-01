@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { roleLabels } from "@/lib/rbac";
+import { Logo } from "@/components/logo";
 import type { UserRole } from "@prisma/client";
 
 const links = [
@@ -29,9 +30,7 @@ export function NavSidebar({
     <aside className="flex h-screen w-60 flex-shrink-0 flex-col justify-between border-r border-slate-200 bg-brand-900 text-white">
       <div>
         <div className="px-5 py-6">
-          <p className="text-sm font-semibold uppercase tracking-widest text-brand-200">
-            Cosme CRM
-          </p>
+          <Logo variant="light" className="h-7 w-auto" />
         </div>
         <nav className="flex flex-col gap-1 px-3">
           {visibleLinks.map((link) => {
