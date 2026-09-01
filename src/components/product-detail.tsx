@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
 
 interface StockLevel {
   id: string;
@@ -174,11 +176,18 @@ function ProductFields({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="edit-category">Categoría</Label>
-            <Input
+            <Select
               id="edit-category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-            />
+            >
+              <option value="">Sin categoría</option>
+              {PRODUCT_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </Select>
           </div>
           <div className="flex items-end gap-2 pb-1">
             <input
