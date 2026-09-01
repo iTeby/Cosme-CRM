@@ -36,6 +36,15 @@ enum SaleStatus {
   ANULADA
 }
 
+// Estados de una orden de compra: a diferencia de una venta, una compra NO
+// afecta el stock al crearse — solo cuando se marca RECIBIDA (ahí se generan
+// las entradas de stock). Anular revierte el stock si ya se había recibido.
+enum PurchaseStatus {
+  PENDIENTE
+  RECIBIDA
+  ANULADA
+}
+
 model User {
   id             String          @id @default(cuid())
   name           String
@@ -47,6 +56,7 @@ model User {
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
   sales          Sale[]
+  purchases      Purchase[]
 
   @@map("users")
 }
@@ -61,6 +71,7 @@ model Warehouse {
   stockLevels StockLevel[]
   movements   StockMovement[]
   sales       Sale[]
+  purchases   Purchase[]
 
   @@map("warehouses")
 }
@@ -123,6 +134,65 @@ model SaleItem {
   @@map("sale_items")
 }
 
+// Ficha de proveedor. Igual que Customer, el historial de compras se
+// consulta al vuelo a través de la relación con Purchase.
+model Supplier {
+  id        String     @id @default(cuid())
+  name      String
+  taxId     String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  purchases Purchase[]
+
+  @@map("suppliers")
+}
+
+// Una orden de compra NO descuenta ni agrega stock al crearse: queda en
+// PENDIENTE hasta que se marca RECIBIDA, momento en que se genera un
+// StockMovement ENTRADA por cada línea (dentro de la misma transacción).
+// Si se anula después de recibida, se revierte esa entrada.
+model Purchase {
+  id          String          @id @default(cuid())
+  number      Int             @unique @default(autoincrement())
+  supplier    Supplier        @relation(fields: [supplierId], references: [id])
+  supplierId  String
+  warehouse   Warehouse       @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+  status      PurchaseStatus  @default(PENDIENTE)
+  totalAmount Decimal         @default(0) @db.Decimal(12, 2)
+  notes       String?
+  createdBy   User            @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  items       PurchaseItem[]
+  movements   StockMovement[]
+
+  @@index([supplierId])
+  @@index([status])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         String         @id @default(cuid())
+  purchase   Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchaseId String
+  variant    ProductVariant @relation(fields: [variantId], references: [id])
+  variantId  String
+  quantity   Int
+  unitCost   Decimal        @db.Decimal(12, 2)
+  subtotal   Decimal        @db.Decimal(12, 2)
+
+  @@index([purchaseId])
+  @@index([variantId])
+  @@map("purchase_items")
+}
+
 model Product {
   id          String           @id @default(cuid())
   name        String
@@ -151,6 +221,7 @@ model ProductVariant {
   stockLevels       StockLevel[]
   movements         StockMovement[]
   saleItems         SaleItem[]
+  purchaseItems     PurchaseItem[]
 
   @@index([productId])
   @@map("product_variants")
@@ -185,11 +256,14 @@ model StockMovement {
   userId      String
   sale        Sale?          @relation(fields: [saleId], references: [id])
   saleId      String?
+  purchase    Purchase?      @relation(fields: [purchaseId], references: [id])
+  purchaseId  String?
   createdAt   DateTime       @default(now())
 
   @@index([variantId])
   @@index([warehouseId])
   @@index([saleId])
+  @@index([purchaseId])
   @@index([createdAt])
   @@map("stock_movements")
 }
