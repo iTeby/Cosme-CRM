@@ -13,6 +13,8 @@ const links = [
   { href: "/inventory", label: "Inventario" },
 ];
 
+const adminLinks = [{ href: "/users", label: "Usuarios" }];
+
 export function NavSidebar({
   userName,
   userRole,
@@ -21,6 +23,7 @@ export function NavSidebar({
   userRole: UserRole;
 }) {
   const pathname = usePathname();
+  const visibleLinks = userRole === "ADMIN" ? [...links, ...adminLinks] : links;
 
   return (
     <aside className="flex h-screen w-60 flex-shrink-0 flex-col justify-between border-r border-slate-200 bg-brand-900 text-white">
@@ -31,7 +34,7 @@ export function NavSidebar({
           </p>
         </div>
         <nav className="flex flex-col gap-1 px-3">
-          {links.map((link) => {
+          {visibleLinks.map((link) => {
             const active = pathname.startsWith(link.href);
             return (
               <Link

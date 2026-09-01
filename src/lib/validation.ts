@@ -34,6 +34,25 @@ export const variantUpdateSchema = z.object({
 
 export const variantAddSchema = variantInputSchema;
 
+export const userCreateSchema = z.object({
+  name: z.string().trim().min(2, "El nombre es muy corto").max(120),
+  email: z.string().trim().toLowerCase().email("Correo inválido"),
+  password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(72),
+  role: z.enum(["ADMIN", "VENTAS", "BODEGA", "COMPRAS"]),
+});
+
+export const userUpdateSchema = z.object({
+  name: z.string().trim().min(2, "El nombre es muy corto").max(120),
+  role: z.enum(["ADMIN", "VENTAS", "BODEGA", "COMPRAS"]),
+  active: z.boolean(),
+  password: z
+    .string()
+    .min(8, "La contraseña debe tener al menos 8 caracteres")
+    .max(72)
+    .optional()
+    .or(z.literal("")),
+});
+
 export const stockMovementSchema = z.object({
   variantId: z.string().min(1, "Selecciona un producto"),
   warehouseId: z.string().min(1, "Selecciona una bodega"),
