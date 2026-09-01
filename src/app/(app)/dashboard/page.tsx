@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { can } from "@/lib/rbac";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatNumber } from "@/lib/utils";
@@ -10,7 +11,9 @@ export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
-  const [productCount, variants, recentMovements] = await Promise.all([
+  const canViewSales = can(session.user.role, "viewSales");
+
+  const [productCount, variants, recentMovements, pendingSales] = await Promise.all([
     prisma.product.count({ where: { active: true } }),
     prisma.productVariant.findMany({
       where: { active: true },
@@ -21,6 +24,9 @@ export default async function DashboardPage() {
       take: 8,
       include: { variant: { include: { product: true } }, user: { select: { name: true } } },
     }),
+    canViewSales
+      ? prisma.sale.count({ where: { status: { in: ["PENDIENTE", "PAGADA"] } } })
+      : Promise.resolve(0),
   ]);
 
   const totalUnits = variants.reduce(
@@ -37,6 +43,9 @@ export default async function DashboardPage() {
     { label: "Variantes / SKU", value: formatNumber(variants.length) },
     { label: "Unidades en stock", value: formatNumber(totalUnits) },
     { label: "Con stock bajo", value: formatNumber(lowStock.length), warn: lowStock.length > 0 },
+    ...(canViewSales
+      ? [{ label: "Ventas por entregar", value: formatNumber(pendingSales) }]
+      : []),
   ];
 
   return (

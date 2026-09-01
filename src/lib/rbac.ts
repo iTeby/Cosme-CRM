@@ -8,6 +8,9 @@ const permissions = {
   manageStock: ["ADMIN", "BODEGA"],
   manageUsers: ["ADMIN"],
   viewCatalog: ["ADMIN", "VENTAS", "BODEGA", "COMPRAS"],
+  manageCustomers: ["ADMIN", "VENTAS"],
+  manageSales: ["ADMIN", "VENTAS"],
+  viewSales: ["ADMIN", "VENTAS", "BODEGA"],
 } satisfies Record<string, UserRole[]>;
 
 export type Permission = keyof typeof permissions;
