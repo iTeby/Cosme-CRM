@@ -14,6 +14,8 @@ const links = [
   { href: "/inventory", label: "Inventario" },
 ];
 
+const salesLinks = [{ href: "/sales", label: "Ventas" }];
+const customerLinks = [{ href: "/customers", label: "Clientes" }];
 const adminLinks = [{ href: "/users", label: "Usuarios" }];
 
 export function NavSidebar({
@@ -24,13 +26,22 @@ export function NavSidebar({
   userRole: UserRole;
 }) {
   const pathname = usePathname();
-  const visibleLinks = userRole === "ADMIN" ? [...links, ...adminLinks] : links;
+  const canViewSales = userRole === "ADMIN" || userRole === "VENTAS" || userRole === "BODEGA";
+  const canViewCustomers = userRole === "ADMIN" || userRole === "VENTAS";
+  const visibleLinks = [
+    ...links,
+    ...(canViewSales ? salesLinks : []),
+    ...(canViewCustomers ? customerLinks : []),
+    ...(userRole === "ADMIN" ? adminLinks : []),
+  ];
 
   return (
     <aside className="flex h-screen w-60 flex-shrink-0 flex-col justify-between border-r border-slate-200 bg-brand-900 text-white">
       <div>
         <div className="px-5 py-6">
-          <Logo variant="light" className="h-7 w-auto" />
+          <Link href="/dashboard" className="inline-block">
+            <Logo variant="light" className="h-7 w-auto" />
+          </Link>
         </div>
         <nav className="flex flex-col gap-1 px-3">
           {visibleLinks.map((link) => {
