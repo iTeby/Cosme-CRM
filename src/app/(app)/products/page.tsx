@@ -30,9 +30,14 @@ export default async function ProductsPage() {
           </p>
         </div>
         {canManage && (
-          <Link href="/products/new">
-            <Button>Nuevo producto</Button>
-          </Link>
+          <div className="flex gap-3">
+            <Link href="/products/import">
+              <Button variant="secondary">Importar Excel</Button>
+            </Link>
+            <Link href="/products/new">
+              <Button>Nuevo producto</Button>
+            </Link>
+          </div>
         )}
       </div>
 

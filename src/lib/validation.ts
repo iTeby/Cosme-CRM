@@ -111,6 +111,27 @@ export const purchaseStatusUpdateSchema = z.object({
   status: z.enum(["PENDIENTE", "RECIBIDA", "ANULADA"]),
 });
 
+export const productImportRowSchema = z.object({
+  rowNumber: z.number().int(),
+  sku: z.string().trim().min(1, "SKU vacío").max(60, "SKU muy largo"),
+  name: z.string().trim().min(1, "Nombre vacío").max(120, "Nombre muy largo"),
+  qty: z.coerce
+    .number({ invalid_type_error: "Cantidad inválida" })
+    .int("La cantidad debe ser un número entero")
+    .min(0, "La cantidad no puede ser negativa"),
+  warehouseName: z.string().trim().min(1, "Bodega vacía").max(80, "Nombre de bodega muy largo"),
+  price: z.coerce
+    .number({ invalid_type_error: "Valor inválido" })
+    .min(0, "El valor no puede ser negativo"),
+});
+
+export const productImportCommitSchema = z.object({
+  rows: z
+    .array(productImportRowSchema)
+    .min(1, "No hay filas válidas para importar")
+    .max(5000, "Demasiadas filas para importar de una vez"),
+});
+
 export const stockMovementSchema = z.object({
   variantId: z.string().min(1, "Selecciona un producto"),
   warehouseId: z.string().min(1, "Selecciona una bodega"),
