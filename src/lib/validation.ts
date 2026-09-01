@@ -82,6 +82,35 @@ export const saleStatusUpdateSchema = z.object({
   status: z.enum(["PENDIENTE", "PAGADA", "ENTREGADA", "ANULADA"]),
 });
 
+export const supplierCreateSchema = z.object({
+  name: z.string().trim().min(2, "El nombre es muy corto").max(120),
+  taxId: z.string().trim().max(20).optional().or(z.literal("")),
+  phone: z.string().trim().max(30).optional().or(z.literal("")),
+  email: z.string().trim().toLowerCase().max(160).optional().or(z.literal("")),
+  address: z.string().trim().max(200).optional().or(z.literal("")),
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
+});
+
+export const supplierUpdateSchema = supplierCreateSchema.extend({
+  active: z.boolean(),
+});
+
+export const purchaseItemInputSchema = z.object({
+  variantId: z.string().min(1, "Selecciona un producto"),
+  quantity: z.coerce.number().int().min(1, "La cantidad debe ser al menos 1"),
+  unitCost: z.coerce.number().min(0, "El costo no puede ser negativo"),
+});
+
+export const purchaseCreateSchema = z.object({
+  supplierId: z.string().min(1, "Selecciona un proveedor"),
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
+  items: z.array(purchaseItemInputSchema).min(1, "Agrega al menos un producto"),
+});
+
+export const purchaseStatusUpdateSchema = z.object({
+  status: z.enum(["PENDIENTE", "RECIBIDA", "ANULADA"]),
+});
+
 export const stockMovementSchema = z.object({
   variantId: z.string().min(1, "Selecciona un producto"),
   warehouseId: z.string().min(1, "Selecciona una bodega"),

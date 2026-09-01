@@ -12,8 +12,9 @@ export default async function DashboardPage() {
   if (!session) return null;
 
   const canViewSales = can(session.user.role, "viewSales");
+  const canViewPurchases = can(session.user.role, "viewPurchases");
 
-  const [productCount, variants, recentMovements, pendingSales] = await Promise.all([
+  const [productCount, variants, recentMovements, pendingSales, pendingPurchases] = await Promise.all([
     prisma.product.count({ where: { active: true } }),
     prisma.productVariant.findMany({
       where: { active: true },
@@ -26,6 +27,9 @@ export default async function DashboardPage() {
     }),
     canViewSales
       ? prisma.sale.count({ where: { status: { in: ["PENDIENTE", "PAGADA"] } } })
+      : Promise.resolve(0),
+    canViewPurchases
+      ? prisma.purchase.count({ where: { status: "PENDIENTE" } })
       : Promise.resolve(0),
   ]);
 
@@ -45,6 +49,9 @@ export default async function DashboardPage() {
     { label: "Con stock bajo", value: formatNumber(lowStock.length), warn: lowStock.length > 0 },
     ...(canViewSales
       ? [{ label: "Ventas por entregar", value: formatNumber(pendingSales) }]
+      : []),
+    ...(canViewPurchases
+      ? [{ label: "Compras por recibir", value: formatNumber(pendingPurchases) }]
       : []),
   ];
 

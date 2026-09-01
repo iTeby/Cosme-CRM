@@ -16,6 +16,8 @@ const links = [
 
 const salesLinks = [{ href: "/sales", label: "Ventas" }];
 const customerLinks = [{ href: "/customers", label: "Clientes" }];
+const purchaseLinks = [{ href: "/purchases", label: "Compras" }];
+const supplierLinks = [{ href: "/suppliers", label: "Proveedores" }];
 const reportLinks = [{ href: "/reports", label: "Reportes" }];
 const adminLinks = [{ href: "/users", label: "Usuarios" }];
 
@@ -29,11 +31,16 @@ export function NavSidebar({
   const pathname = usePathname();
   const canViewSales = userRole === "ADMIN" || userRole === "VENTAS" || userRole === "BODEGA";
   const canViewCustomers = userRole === "ADMIN" || userRole === "VENTAS";
-  const canViewReports = userRole === "ADMIN" || userRole === "VENTAS" || userRole === "BODEGA";
+  const canViewPurchases = userRole === "ADMIN" || userRole === "COMPRAS" || userRole === "BODEGA";
+  const canViewSuppliers = userRole === "ADMIN" || userRole === "COMPRAS";
+  const canViewReports =
+    userRole === "ADMIN" || userRole === "VENTAS" || userRole === "BODEGA" || userRole === "COMPRAS";
   const visibleLinks = [
     ...links,
     ...(canViewSales ? salesLinks : []),
     ...(canViewCustomers ? customerLinks : []),
+    ...(canViewPurchases ? purchaseLinks : []),
+    ...(canViewSuppliers ? supplierLinks : []),
     ...(canViewReports ? reportLinks : []),
     ...(userRole === "ADMIN" ? adminLinks : []),
   ];

@@ -18,6 +18,8 @@ export const config = {
     "/users/:path*",
     "/sales/:path*",
     "/customers/:path*",
+    "/purchases/:path*",
+    "/suppliers/:path*",
     "/reports/:path*",
   ],
 };
