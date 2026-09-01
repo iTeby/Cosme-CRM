@@ -11,6 +11,7 @@ const permissions = {
   manageCustomers: ["ADMIN", "VENTAS"],
   manageSales: ["ADMIN", "VENTAS"],
   viewSales: ["ADMIN", "VENTAS", "BODEGA"],
+  viewReports: ["ADMIN", "VENTAS", "BODEGA"],
 } satisfies Record<string, UserRole[]>;
 
 export type Permission = keyof typeof permissions;
