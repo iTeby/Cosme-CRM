@@ -139,3 +139,12 @@ export const stockMovementSchema = z.object({
   quantity: z.coerce.number().int().refine((n) => n !== 0, "La cantidad no puede ser 0"),
   reason: z.string().trim().max(200).optional().or(z.literal("")),
 });
+
+// Edición de un movimiento ya registrado: a diferencia de la creación, no
+// se permite mover el movimiento a otro producto/bodega (eso equivale a
+// borrar y crear uno nuevo) — solo se puede corregir tipo, cantidad y motivo.
+export const stockMovementUpdateSchema = z.object({
+  type: z.enum(["ENTRADA", "SALIDA", "AJUSTE"]),
+  quantity: z.coerce.number().int().refine((n) => n !== 0, "La cantidad no puede ser 0"),
+  reason: z.string().trim().max(200).optional().or(z.literal("")),
+});

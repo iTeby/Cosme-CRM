@@ -6,6 +6,10 @@ import type { UserRole } from "@prisma/client";
 const permissions = {
   manageProducts: ["ADMIN"],
   manageStock: ["ADMIN", "BODEGA"],
+  // Editar/eliminar/duplicar un movimiento de inventario ya registrado es
+  // más sensible que solo registrar uno nuevo (reescribe historial), así
+  // que se restringe a Admin aunque Bodega pueda crear movimientos.
+  editStockMovements: ["ADMIN"],
   manageUsers: ["ADMIN"],
   viewCatalog: ["ADMIN", "VENTAS", "BODEGA", "COMPRAS"],
   manageCustomers: ["ADMIN", "VENTAS"],

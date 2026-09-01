@@ -34,6 +34,8 @@ interface Movement {
   variant: { sku: string; product: { name: string } };
   warehouse: { name: string };
   user: { name: string | null };
+  saleId: string | null;
+  purchaseId: string | null;
 }
 
 const typeLabels: Record<Movement["type"], string> = {
@@ -53,11 +55,13 @@ export function InventoryClient({
   warehouses,
   movements,
   canManage,
+  canEditMovements,
 }: {
   variants: Variant[];
   warehouses: Warehouse[];
   movements: Movement[];
   canManage: boolean;
+  canEditMovements: boolean;
 }) {
   const router = useRouter();
 
@@ -126,29 +130,17 @@ export function InventoryClient({
                   <Th>Cantidad</Th>
                   <Th>Motivo</Th>
                   <Th>Usuario</Th>
+                  {canEditMovements && <Th>Acciones</Th>}
                 </Tr>
               </Thead>
               <Tbody>
                 {movements.map((m) => (
-                  <Tr key={m.id}>
-                    <Td className="whitespace-nowrap text-xs text-slate-500">
-                      {formatDate(m.createdAt)}
-                    </Td>
-                    <Td>
-                      {m.variant.product.name}{" "}
-                      <span className="font-mono text-xs text-slate-400">({m.variant.sku})</span>
-                    </Td>
-                    <Td>{m.warehouse.name}</Td>
-                    <Td>
-                      <Badge tone={typeTone[m.type]}>{typeLabels[m.type]}</Badge>
-                    </Td>
-                    <Td className={m.quantity < 0 ? "text-red-700" : "text-emerald-700"}>
-                      {m.quantity > 0 ? "+" : ""}
-                      {formatNumber(m.quantity)}
-                    </Td>
-                    <Td className="text-slate-500">{m.reason || "—"}</Td>
-                    <Td className="text-slate-500">{m.user.name || "—"}</Td>
-                  </Tr>
+                  <MovementRow
+                    key={m.id}
+                    movement={m}
+                    canEditMovements={canEditMovements}
+                    onChanged={() => router.refresh()}
+                  />
                 ))}
               </Tbody>
             </Table>
@@ -156,6 +148,208 @@ export function InventoryClient({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function MovementRow({
+  movement,
+  canEditMovements,
+  onChanged,
+}: {
+  movement: Movement;
+  canEditMovements: boolean;
+  onChanged: () => void;
+}) {
+  const m = movement;
+  const [editing, setEditing] = useState(false);
+  const [type, setType] = useState<Movement["type"]>(m.type);
+  // La cantidad se muestra siempre en positivo en el formulario de edición
+  // (igual que al crear un movimiento); el signo lo decide el tipo.
+  const [quantity, setQuantity] = useState(String(Math.abs(m.quantity)));
+  const [reason, setReason] = useState(m.reason ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const isAuto = Boolean(m.saleId || m.purchaseId);
+
+  function startEdit() {
+    setType(m.type);
+    setQuantity(String(Math.abs(m.quantity)));
+    setReason(m.reason ?? "");
+    setError(null);
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    setError(null);
+    setLoading(true);
+    const res = await fetch(`/api/stock-movements/${m.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, quantity: Number(quantity) || 0, reason }),
+    });
+    setLoading(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(typeof data.error === "string" ? data.error : "No se pudo guardar el cambio.");
+      return;
+    }
+
+    setEditing(false);
+    onChanged();
+  }
+
+  async function handleDelete() {
+    if (!window.confirm("¿Eliminar este movimiento? Esto revierte su efecto sobre el stock.")) {
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    const res = await fetch(`/api/stock-movements/${m.id}`, { method: "DELETE" });
+    setLoading(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(typeof data.error === "string" ? data.error : "No se pudo eliminar el movimiento.");
+      return;
+    }
+
+    onChanged();
+  }
+
+  async function handleDuplicate() {
+    setError(null);
+    setLoading(true);
+    const res = await fetch(`/api/stock-movements/${m.id}/duplicate`, { method: "POST" });
+    setLoading(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(typeof data.error === "string" ? data.error : "No se pudo duplicar el movimiento.");
+      return;
+    }
+
+    onChanged();
+  }
+
+  if (editing) {
+    return (
+      <Tr>
+        <Td className="whitespace-nowrap text-xs text-slate-500">{formatDate(m.createdAt)}</Td>
+        <Td>
+          {m.variant.product.name}{" "}
+          <span className="font-mono text-xs text-slate-400">({m.variant.sku})</span>
+        </Td>
+        <Td>{m.warehouse.name}</Td>
+        <Td>
+          <Select value={type} onChange={(e) => setType(e.target.value as Movement["type"])}>
+            <option value="ENTRADA">Entrada</option>
+            <option value="SALIDA">Salida</option>
+            <option value="AJUSTE">Ajuste (+/-)</option>
+          </Select>
+        </Td>
+        <Td>
+          <Input
+            type="number"
+            step="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            className="w-24"
+          />
+        </Td>
+        <Td>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Opcional" />
+        </Td>
+        <Td className="text-slate-500">{m.user.name || "—"}</Td>
+        <Td>
+          <div className="flex flex-col gap-1">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={saveEdit}
+                disabled={loading}
+                className="px-2.5 py-1 text-xs"
+              >
+                Guardar
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEditing(false)}
+                disabled={loading}
+                className="px-2.5 py-1 text-xs"
+              >
+                Cancelar
+              </Button>
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+          </div>
+        </Td>
+      </Tr>
+    );
+  }
+
+  return (
+    <Tr>
+      <Td className="whitespace-nowrap text-xs text-slate-500">{formatDate(m.createdAt)}</Td>
+      <Td>
+        {m.variant.product.name}{" "}
+        <span className="font-mono text-xs text-slate-400">({m.variant.sku})</span>
+      </Td>
+      <Td>{m.warehouse.name}</Td>
+      <Td>
+        <Badge tone={typeTone[m.type]}>{typeLabels[m.type]}</Badge>
+      </Td>
+      <Td className={m.quantity < 0 ? "text-red-700" : "text-emerald-700"}>
+        {m.quantity > 0 ? "+" : ""}
+        {formatNumber(m.quantity)}
+      </Td>
+      <Td className="text-slate-500">{m.reason || "—"}</Td>
+      <Td className="text-slate-500">{m.user.name || "—"}</Td>
+      {canEditMovements && (
+        <Td>
+          {isAuto ? (
+            <span className="text-xs text-slate-400" title="Generado por una venta o compra">
+              Automático
+            </span>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={startEdit}
+                  disabled={loading}
+                  className="px-2.5 py-1 text-xs"
+                >
+                  Editar
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleDuplicate}
+                  disabled={loading}
+                  className="px-2.5 py-1 text-xs"
+                >
+                  Duplicar
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={handleDelete}
+                  disabled={loading}
+                  className="px-2.5 py-1 text-xs"
+                >
+                  Eliminar
+                </Button>
+              </div>
+              {error && <p className="text-xs text-red-600">{error}</p>}
+            </div>
+          )}
+        </Td>
+      )}
+    </Tr>
   );
 }
 

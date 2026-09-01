@@ -32,6 +32,7 @@ export default async function InventoryPage() {
       warehouses={JSON.parse(JSON.stringify(warehouses))}
       movements={JSON.parse(JSON.stringify(movements))}
       canManage={can(session.user.role, "manageStock")}
+      canEditMovements={can(session.user.role, "editStockMovements")}
     />
   );
 }
