@@ -1,0 +1,120 @@
+// Esquema Fase 01 — Fundaciones
+// Diseñado con "bodega" como entidad desde el día uno: aunque la interfaz
+// de la Fase 01 solo opera con una bodega por defecto, el modelo ya soporta
+// múltiples ubicaciones y transferencias sin necesidad de migrar más adelante.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  VENTAS
+  BODEGA
+  COMPRAS
+}
+
+enum MovementType {
+  ENTRADA
+  SALIDA
+  AJUSTE
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  passwordHash   String
+  role           UserRole        @default(BODEGA)
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  stockMovements StockMovement[]
+
+  @@map("users")
+}
+
+model Warehouse {
+  id          String          @id @default(cuid())
+  name        String
+  isDefault   Boolean         @default(false)
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  stockLevels StockLevel[]
+  movements   StockMovement[]
+
+  @@map("warehouses")
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  category    String?
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  variants    ProductVariant[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id                String          @id @default(cuid())
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId         String
+  sku               String          @unique
+  attributes        String?
+  price             Decimal         @default(0) @db.Decimal(12, 2)
+  cost              Decimal         @default(0) @db.Decimal(12, 2)
+  lowStockThreshold Int             @default(5)
+  active            Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  stockLevels       StockLevel[]
+  movements         StockMovement[]
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// Snapshot de stock actual por variante + bodega. Se recalcula de forma
+// transaccional cada vez que se crea un StockMovement; StockMovement es
+// la fuente de verdad (el historial nunca se edita ni se borra).
+model StockLevel {
+  id          String         @id @default(cuid())
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  variantId   String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouseId String
+  quantity    Int            @default(0)
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([variantId, warehouseId])
+  @@map("stock_levels")
+}
+
+model StockMovement {
+  id          String         @id @default(cuid())
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  variantId   String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+  type        MovementType
+  quantity    Int
+  reason      String?
+  user        User           @relation(fields: [userId], references: [id])
+  userId      String
+  createdAt   DateTime       @default(now())
+
+  @@index([variantId])
+  @@index([warehouseId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
