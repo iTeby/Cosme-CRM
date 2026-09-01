@@ -6,6 +6,7 @@ import type { UserRole } from "@prisma/client";
 const permissions = {
   manageProducts: ["ADMIN"],
   manageStock: ["ADMIN", "BODEGA"],
+  manageUsers: ["ADMIN"],
   viewCatalog: ["ADMIN", "VENTAS", "BODEGA", "COMPRAS"],
 } satisfies Record<string, UserRole[]>;
 
