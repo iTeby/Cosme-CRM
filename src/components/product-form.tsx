@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
 
 interface VariantDraft {
   sku: string;
@@ -100,12 +102,18 @@ export function ProductForm() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="category">Categoría</Label>
-              <Input
+              <Select
                 id="category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="Opcional"
-              />
+              >
+                <option value="">Sin categoría</option>
+                {PRODUCT_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </Select>
             </div>
           </div>
           <div>

@@ -1,4 +1,13 @@
 import { z } from "zod";
+import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
+
+// Se mantiene opcional (no todo producto tiene categoría asignada, p.ej. los
+// importados por Excel), pero si se envía un valor debe ser uno de la lista
+// curada — así el desplegable y el backend nunca se desincronizan.
+const categorySchema = z
+  .enum(PRODUCT_CATEGORIES)
+  .optional()
+  .or(z.literal(""));
 
 export const variantInputSchema = z.object({
   sku: z.string().trim().min(2, "SKU muy corto").max(60),
@@ -12,14 +21,14 @@ export const variantInputSchema = z.object({
 export const productCreateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
   description: z.string().trim().max(500).optional().or(z.literal("")),
-  category: z.string().trim().max(80).optional().or(z.literal("")),
+  category: categorySchema,
   variants: z.array(variantInputSchema).min(1, "Agrega al menos una variante/SKU"),
 });
 
 export const productUpdateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
   description: z.string().trim().max(500).optional().or(z.literal("")),
-  category: z.string().trim().max(80).optional().or(z.literal("")),
+  category: categorySchema,
   active: z.boolean(),
 });
 
