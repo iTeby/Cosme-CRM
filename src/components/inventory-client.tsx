@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuItem, DotsIcon } from "@/components/ui/dropdown-menu";
 import { formatDate, formatNumber } from "@/lib/utils";
 
 interface Variant {
@@ -314,36 +315,18 @@ function MovementRow({
               Automático
             </span>
           ) : (
-            <div className="flex flex-col gap-1">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={startEdit}
-                  disabled={loading}
-                  className="px-2.5 py-1 text-xs"
-                >
+            <div className="flex flex-col items-end gap-1">
+              <DropdownMenu trigger={<DotsIcon />} label="Acciones del movimiento">
+                <DropdownMenuItem onClick={startEdit} disabled={loading}>
                   Editar
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleDuplicate}
-                  disabled={loading}
-                  className="px-2.5 py-1 text-xs"
-                >
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDuplicate} disabled={loading}>
                   Duplicar
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={handleDelete}
-                  disabled={loading}
-                  className="px-2.5 py-1 text-xs"
-                >
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDelete} disabled={loading} danger>
                   Eliminar
-                </Button>
-              </div>
+                </DropdownMenuItem>
+              </DropdownMenu>
               {error && <p className="text-xs text-red-600">{error}</p>}
             </div>
           )}
