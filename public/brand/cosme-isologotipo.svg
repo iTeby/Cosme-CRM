@@ -1,0 +1,5 @@
+<svg viewBox="0 0 320 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cosme">
+  <path d="M65,20.6 L31,20.6 L14,50 L31,79.4 L65,79.4" fill="none" stroke="#0E1622" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="74" cy="34" r="7.5" fill="#D9A24B"/>
+  <text x="112" y="52" dominant-baseline="central" font-size="58" font-weight="800" letter-spacing="0.5" fill="#0E1622" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">OSME</text>
+</svg>
