@@ -46,34 +46,39 @@ export function NavSidebar({
   ];
 
   return (
-    <aside className="flex h-screen w-60 flex-shrink-0 flex-col justify-between border-r border-slate-200 bg-brand-900 text-white">
-      <div>
-        <div className="px-5 py-6">
-          <Link href="/dashboard" className="inline-block">
-            <Logo variant="light" className="h-7 w-auto" />
-          </Link>
-        </div>
-        <nav className="flex flex-col gap-1 px-3">
-          {visibleLinks.map((link) => {
-            const active = pathname.startsWith(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-white/10 text-white"
-                    : "text-brand-100/80 hover:bg-white/5 hover:text-white"
-                )}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </nav>
+    // sticky top-0 + h-screen: el menú queda fijo en la pantalla mientras
+    // se desplaza el contenido de la derecha, en vez de desaparecer hacia
+    // arriba con el resto de la página (así se comporta en todas las
+    // páginas, porque este componente es compartido por todo el layout).
+    <aside className="sticky top-0 flex h-screen w-60 flex-shrink-0 flex-col border-r border-slate-200 bg-brand-900 text-white">
+      <div className="flex-shrink-0 px-5 py-6">
+        <Link href="/dashboard" className="inline-block">
+          <Logo variant="light" className="h-7 w-auto" />
+        </Link>
       </div>
-      <div className="border-t border-white/10 px-5 py-4">
+      {/* min-h-0 es necesario para que overflow-y-auto funcione dentro de un
+          contenedor flex en columna — si no, el nav empuja la altura del
+          aside en vez de desplazarse internamente. */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3">
+        {visibleLinks.map((link) => {
+          const active = pathname.startsWith(link.href);
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                active
+                  ? "bg-white/10 text-white"
+                  : "text-brand-100/80 hover:bg-white/5 hover:text-white"
+              )}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <div className="flex-shrink-0 border-t border-white/10 px-5 py-4">
         <p className="truncate text-sm font-medium text-white">{userName}</p>
         <p className="text-xs text-brand-200">{roleLabels[userRole]}</p>
         <button
