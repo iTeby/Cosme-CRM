@@ -4,22 +4,33 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
-import { roleLabels } from "@/lib/rbac";
+import { can, roleLabels, type Permission } from "@/lib/rbac";
 import { Logo } from "@/components/logo";
 import type { UserRole } from "@prisma/client";
 
-const links = [
-  { href: "/dashboard", label: "Panel" },
-  { href: "/products", label: "Productos" },
-  { href: "/inventory", label: "Inventario" },
-];
+type NavLink = {
+  href: string;
+  label: string;
+  // Permiso que habilita el enlace, tomado de src/lib/rbac.ts. `null` =
+  // visible para cualquier sesión iniciada.
+  permission: Permission | null;
+};
 
-const salesLinks = [{ href: "/sales", label: "Ventas" }];
-const customerLinks = [{ href: "/customers", label: "Clientes" }];
-const purchaseLinks = [{ href: "/purchases", label: "Compras" }];
-const supplierLinks = [{ href: "/suppliers", label: "Proveedores" }];
-const reportLinks = [{ href: "/reports", label: "Reportes" }];
-const adminLinks = [{ href: "/users", label: "Usuarios" }];
+// Cada enlace declara su permiso en vez de comparar roles a mano. Son los
+// mismos permisos que exigen las páginas en src/app/(app)/, así que el menú
+// no puede ofrecer un enlace que después rebote al dashboard: si mañana
+// cambia una regla en rbac.ts, el menú la hereda sin tocar este archivo.
+const navLinks: NavLink[] = [
+  { href: "/dashboard", label: "Panel", permission: null },
+  { href: "/products", label: "Productos", permission: "viewCatalog" },
+  { href: "/inventory", label: "Inventario", permission: "viewCatalog" },
+  { href: "/sales", label: "Ventas", permission: "viewSales" },
+  { href: "/customers", label: "Clientes", permission: "manageCustomers" },
+  { href: "/purchases", label: "Compras", permission: "viewPurchases" },
+  { href: "/suppliers", label: "Proveedores", permission: "manageSuppliers" },
+  { href: "/reports", label: "Reportes", permission: "viewReports" },
+  { href: "/users", label: "Usuarios", permission: "manageUsers" },
+];
 
 export function NavSidebar({
   userName,
@@ -29,21 +40,9 @@ export function NavSidebar({
   userRole: UserRole;
 }) {
   const pathname = usePathname();
-  const canViewSales = userRole === "ADMIN" || userRole === "VENTAS" || userRole === "BODEGA";
-  const canViewCustomers = userRole === "ADMIN" || userRole === "VENTAS";
-  const canViewPurchases = userRole === "ADMIN" || userRole === "COMPRAS" || userRole === "BODEGA";
-  const canViewSuppliers = userRole === "ADMIN" || userRole === "COMPRAS";
-  const canViewReports =
-    userRole === "ADMIN" || userRole === "VENTAS" || userRole === "BODEGA" || userRole === "COMPRAS";
-  const visibleLinks = [
-    ...links,
-    ...(canViewSales ? salesLinks : []),
-    ...(canViewCustomers ? customerLinks : []),
-    ...(canViewPurchases ? purchaseLinks : []),
-    ...(canViewSuppliers ? supplierLinks : []),
-    ...(canViewReports ? reportLinks : []),
-    ...(userRole === "ADMIN" ? adminLinks : []),
-  ];
+  const visibleLinks = navLinks.filter(
+    (link) => link.permission === null || can(userRole, link.permission)
+  );
 
   return (
     // sticky top-0 + h-screen: el menú queda fijo en la pantalla mientras
