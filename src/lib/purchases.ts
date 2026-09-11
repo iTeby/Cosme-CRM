@@ -1,7 +1,6 @@
-// Helpers compartidos por las vistas de Compras: etiquetas en español y el
-// color de badge para cada estado, más el mapa de transiciones permitidas
-// (debe reflejar exactamente el mismo mapa que usa la API en
-// src/app/api/purchases/[id]/status/route.ts).
+// Fuente única de la máquina de estados de una compra, más las etiquetas y
+// colores que usan las vistas. La API de cambio de estado importa
+// canTransitionPurchase() desde acá: el mapa no se repite en ningún otro archivo.
 export type PurchaseStatus = "PENDIENTE" | "RECIBIDA" | "ANULADA";
 
 export const purchaseStatusLabels: Record<PurchaseStatus, string> = {
@@ -16,8 +15,14 @@ export const purchaseStatusTone: Record<PurchaseStatus, "neutral" | "good" | "wa
   ANULADA: "critical",
 };
 
+// ANULADA es un estado final; RECIBIDA solo puede pasar a ANULADA, para
+// corregir una recepción registrada por error.
 export const purchaseStatusTransitions: Record<PurchaseStatus, PurchaseStatus[]> = {
   PENDIENTE: ["RECIBIDA", "ANULADA"],
   RECIBIDA: ["ANULADA"],
   ANULADA: [],
 };
+
+export function canTransitionPurchase(from: PurchaseStatus, to: PurchaseStatus): boolean {
+  return (purchaseStatusTransitions[from] ?? []).includes(to);
+}

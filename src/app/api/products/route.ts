@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { setStockAbsolute } from "@/lib/inventory";
 import { productCreateSchema } from "@/lib/validation";
 
 export async function GET() {
@@ -78,26 +79,13 @@ export async function POST(req: NextRequest) {
         const initialQuantity =
           variants.find((v) => v.sku === variant.sku)?.initialQuantity ?? 0;
 
-        await tx.stockLevel.create({
-          data: {
-            variantId: variant.id,
-            warehouseId: warehouse.id,
-            quantity: initialQuantity,
-          },
+        await setStockAbsolute(tx, {
+          variantId: variant.id,
+          warehouseId: warehouse.id,
+          quantity: initialQuantity,
+          reason: "Carga inicial de stock",
+          userId: session.user.id,
         });
-
-        if (initialQuantity > 0) {
-          await tx.stockMovement.create({
-            data: {
-              variantId: variant.id,
-              warehouseId: warehouse.id,
-              type: "AJUSTE",
-              quantity: initialQuantity,
-              reason: "Carga inicial de stock",
-              userId: session.user.id,
-            },
-          });
-        }
       }
 
       return created;

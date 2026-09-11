@@ -3,15 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { canTransitionPurchase } from "@/lib/purchases";
+import { applyMovement } from "@/lib/inventory";
 import { purchaseStatusUpdateSchema } from "@/lib/validation";
-
-// Transiciones de estado permitidas. ANULADA es un estado final; RECIBIDA
-// solo puede pasar a ANULADA (para corregir una recepción por error).
-const allowedTransitions: Record<string, string[]> = {
-  PENDIENTE: ["RECIBIDA", "ANULADA"],
-  RECIBIDA: ["ANULADA"],
-  ANULADA: [],
-};
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -38,89 +32,53 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       });
       if (!current) throw new Error("PURCHASE_NOT_FOUND");
 
-      const allowed = allowedTransitions[current.status] ?? [];
-      if (!allowed.includes(nextStatus)) {
+      if (!canTransitionPurchase(current.status, nextStatus)) {
         throw new Error("INVALID_TRANSITION");
       }
 
-      // Al marcar RECIBIDA, recién ahí entra la mercadería: un StockMovement
-      // ENTRADA por cada línea, dentro de la misma transacción.
+      // Condicionado al estado leído: ver la nota en la ruta de ventas. Un
+      // doble click en "Marcar recibida" ingresaría la mercadería dos veces.
+      const claimed = await tx.purchase.updateMany({
+        where: { id: params.id, status: current.status },
+        data: { status: nextStatus },
+      });
+      if (claimed.count === 0) throw new Error("CONCURRENT_UPDATE");
+
+      // Al marcar RECIBIDA recién ahí entra la mercadería.
       if (nextStatus === "RECIBIDA") {
         for (const item of current.items) {
-          await tx.stockMovement.create({
-            data: {
-              variantId: item.variantId,
-              warehouseId: current.warehouseId,
-              type: "ENTRADA",
-              quantity: item.quantity,
-              reason: `Recepción de compra #${current.number}`,
-              userId: session.user.id,
-              purchaseId: current.id,
-            },
-          });
-
-          const level = await tx.stockLevel.findUnique({
-            where: {
-              variantId_warehouseId: { variantId: item.variantId, warehouseId: current.warehouseId },
-            },
-          });
-          const currentQuantity = level?.quantity ?? 0;
-
-          await tx.stockLevel.upsert({
-            where: {
-              variantId_warehouseId: { variantId: item.variantId, warehouseId: current.warehouseId },
-            },
-            create: {
-              variantId: item.variantId,
-              warehouseId: current.warehouseId,
-              quantity: currentQuantity + item.quantity,
-            },
-            update: { quantity: currentQuantity + item.quantity },
+          await applyMovement(tx, {
+            variantId: item.variantId,
+            warehouseId: current.warehouseId,
+            type: "ENTRADA",
+            delta: item.quantity,
+            reason: `Recepción de compra #${current.number}`,
+            userId: session.user.id,
+            purchaseId: current.id,
           });
         }
       }
 
-      // Si se anula una compra que ya había sido recibida, se revierte el
-      // stock que había entrado (puede dejar el stock en negativo si ya se
-      // vendió parte de esa mercadería; es una corrección manual del error).
+      // Anular una compra ya recibida revierte esa entrada. Puede dejar el
+      // stock en negativo si parte de la mercadería ya se vendió: es una
+      // corrección manual de un error, y por eso se permite explícitamente.
       if (nextStatus === "ANULADA" && current.status === "RECIBIDA") {
         for (const item of current.items) {
-          await tx.stockMovement.create({
-            data: {
-              variantId: item.variantId,
-              warehouseId: current.warehouseId,
-              type: "SALIDA",
-              quantity: -item.quantity,
-              reason: `Anulación de compra #${current.number}`,
-              userId: session.user.id,
-              purchaseId: current.id,
-            },
-          });
-
-          const level = await tx.stockLevel.findUnique({
-            where: {
-              variantId_warehouseId: { variantId: item.variantId, warehouseId: current.warehouseId },
-            },
-          });
-          const currentQuantity = level?.quantity ?? 0;
-
-          await tx.stockLevel.upsert({
-            where: {
-              variantId_warehouseId: { variantId: item.variantId, warehouseId: current.warehouseId },
-            },
-            create: {
-              variantId: item.variantId,
-              warehouseId: current.warehouseId,
-              quantity: currentQuantity - item.quantity,
-            },
-            update: { quantity: currentQuantity - item.quantity },
+          await applyMovement(tx, {
+            variantId: item.variantId,
+            warehouseId: current.warehouseId,
+            type: "SALIDA",
+            delta: -item.quantity,
+            reason: `Anulación de compra #${current.number}`,
+            userId: session.user.id,
+            purchaseId: current.id,
+            allowNegative: true,
           });
         }
       }
 
-      return tx.purchase.update({
+      return tx.purchase.findUniqueOrThrow({
         where: { id: params.id },
-        data: { status: nextStatus },
         include: {
           supplier: true,
           items: { include: { variant: { include: { product: true } } } },
@@ -137,6 +95,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (message === "INVALID_TRANSITION") {
       return NextResponse.json(
         { error: "Ese cambio de estado no está permitido" },
+        { status: 409 }
+      );
+    }
+    if (message === "CONCURRENT_UPDATE") {
+      return NextResponse.json(
+        { error: "Alguien más cambió el estado de esta compra. Recarga y vuelve a intentar." },
         { status: 409 }
       );
     }

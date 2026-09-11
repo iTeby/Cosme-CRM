@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { applyMovement, InsufficientStockError } from "@/lib/inventory";
 import { saleCreateSchema } from "@/lib/validation";
 
 export async function GET() {
@@ -24,10 +25,10 @@ export async function GET() {
   return NextResponse.json(sales);
 }
 
-// Registrar una venta descuenta stock automáticamente: por cada línea se crea
-// un StockMovement de SALIDA dentro de la misma transacción que la venta, así
-// que nunca queda una venta registrada sin su correspondiente salida de stock
-// (y viceversa). Si no hay stock suficiente para alguna línea, se aborta todo.
+// Registrar una venta descuenta stock automáticamente: por cada línea se aplica
+// un movimiento de SALIDA dentro de la misma transacción que la venta, así que
+// nunca queda una venta registrada sin su correspondiente salida de stock (y
+// viceversa). Si no hay stock suficiente para alguna línea, se aborta todo.
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -72,16 +73,6 @@ export async function POST(req: NextRequest) {
         const variant = await tx.productVariant.findUnique({ where: { id: item.variantId } });
         if (!variant) throw new Error("VARIANT_NOT_FOUND");
 
-        const existingLevel = await tx.stockLevel.findUnique({
-          where: { variantId_warehouseId: { variantId: item.variantId, warehouseId: warehouse.id } },
-        });
-        const currentQuantity = existingLevel?.quantity ?? 0;
-        const nextQuantity = currentQuantity - item.quantity;
-
-        if (nextQuantity < 0) {
-          throw new Error(`INSUFFICIENT_STOCK:${variant.sku}`);
-        }
-
         await tx.saleItem.create({
           data: {
             saleId: created.id,
@@ -92,22 +83,15 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        await tx.stockMovement.create({
-          data: {
-            variantId: item.variantId,
-            warehouseId: warehouse.id,
-            type: "SALIDA",
-            quantity: -item.quantity,
-            reason: `Venta #${created.number}`,
-            userId: session.user.id,
-            saleId: created.id,
-          },
-        });
-
-        await tx.stockLevel.upsert({
-          where: { variantId_warehouseId: { variantId: item.variantId, warehouseId: warehouse.id } },
-          create: { variantId: item.variantId, warehouseId: warehouse.id, quantity: nextQuantity },
-          update: { quantity: nextQuantity },
+        await applyMovement(tx, {
+          variantId: item.variantId,
+          warehouseId: warehouse.id,
+          type: "SALIDA",
+          delta: -item.quantity,
+          reason: `Venta #${created.number}`,
+          userId: session.user.id,
+          saleId: created.id,
+          sku: variant.sku,
         });
       }
 
@@ -119,14 +103,13 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(sale, { status: 201 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "";
-    if (message.startsWith("INSUFFICIENT_STOCK")) {
-      const sku = message.split(":")[1];
+    if (err instanceof InsufficientStockError) {
       return NextResponse.json(
-        { error: `No hay stock suficiente para el SKU ${sku}` },
+        { error: `No hay stock suficiente para el SKU ${err.sku}` },
         { status: 409 }
       );
     }
+    const message = err instanceof Error ? err.message : "";
     if (message === "CUSTOMER_NOT_FOUND") {
       return NextResponse.json({ error: "Cliente no encontrado" }, { status: 404 });
     }

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { setStockAbsolute } from "@/lib/inventory";
 import { variantAddSchema } from "@/lib/validation";
 
 // Agrega una variante/SKU nueva a un producto existente.
@@ -49,22 +50,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         },
       });
 
-      await tx.stockLevel.create({
-        data: { variantId: created.id, warehouseId: warehouse.id, quantity: initialQuantity },
+      await setStockAbsolute(tx, {
+        variantId: created.id,
+        warehouseId: warehouse.id,
+        quantity: initialQuantity,
+        reason: "Carga inicial de stock",
+        userId: session.user.id,
       });
-
-      if (initialQuantity > 0) {
-        await tx.stockMovement.create({
-          data: {
-            variantId: created.id,
-            warehouseId: warehouse.id,
-            type: "AJUSTE",
-            quantity: initialQuantity,
-            reason: "Carga inicial de stock",
-            userId: session.user.id,
-          },
-        });
-      }
 
       return created;
     });

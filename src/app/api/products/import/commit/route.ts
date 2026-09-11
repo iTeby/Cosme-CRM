@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { setStockAbsolute } from "@/lib/inventory";
 import { productImportCommitSchema } from "@/lib/validation";
 
 export const maxDuration = 60;
@@ -60,20 +61,17 @@ export async function POST(req: NextRequest) {
           existingWarehouses.map((w) => [w.name.toLowerCase(), w.id])
         );
 
+        // La búsqueda es insensible a mayúsculas y el índice del mapa también.
+        // Antes la consulta comparaba exacto pero el mapa se indexaba en
+        // minúsculas: un "Pan-01" en el Excel contra un "PAN-01" en la base no
+        // se encontraba, entraba por la rama de "no existe" y creaba un SKU
+        // duplicado. El stock del mismo producto quedaba partido en dos.
         const skus = rows.map((r) => r.sku);
         const existingVariants = await tx.productVariant.findMany({
-          where: { sku: { in: skus } },
+          where: { sku: { in: skus, mode: "insensitive" } },
           select: { id: true, sku: true },
         });
         const variantBySku = new Map(existingVariants.map((v) => [v.sku.toLowerCase(), v]));
-
-        const existingLevels = await tx.stockLevel.findMany({
-          where: { variantId: { in: existingVariants.map((v) => v.id) } },
-          select: { variantId: true, warehouseId: true, quantity: true },
-        });
-        const levelByKey = new Map(
-          existingLevels.map((l) => [`${l.variantId}:${l.warehouseId}`, l.quantity])
-        );
 
         for (const row of rows) {
           const warehouseKey = row.warehouseName.toLowerCase();
@@ -112,32 +110,21 @@ export async function POST(req: NextRequest) {
             updated += 1;
           }
 
-          const currentQuantity = levelByKey.get(`${variantId}:${warehouseId}`) ?? 0;
-          const delta = row.qty - currentQuantity;
-
-          // Siempre deja un StockLevel para esa variante+bodega (aunque el
-          // delta sea 0), pero solo registra un StockMovement si hay un
-          // cambio real que documentar en el historial.
-          await tx.stockLevel.upsert({
-            where: { variantId_warehouseId: { variantId, warehouseId } },
-            create: { variantId, warehouseId, quantity: row.qty },
-            update: { quantity: row.qty },
+          // Siempre deja un StockLevel para esa variante+bodega (aunque la
+          // diferencia sea 0), pero solo escribe en el historial si hay un
+          // cambio real que documentar. Lee el nivel fila por fila a
+          // propósito: el prefetch que había antes se calculaba al empezar una
+          // transacción que puede durar casi un minuto, y cualquier venta
+          // ocurrida en esa ventana quedaba pisada.
+          const delta = await setStockAbsolute(tx, {
+            variantId,
+            warehouseId,
+            quantity: row.qty,
+            reason: "Importación masiva desde Excel",
+            userId: session.user.id,
           });
-          levelByKey.set(`${variantId}:${warehouseId}`, row.qty);
 
-          if (delta !== 0) {
-            await tx.stockMovement.create({
-              data: {
-                variantId,
-                warehouseId,
-                type: "AJUSTE",
-                quantity: delta,
-                reason: "Importación masiva desde Excel",
-                userId: session.user.id,
-              },
-            });
-            stockAdjustments += 1;
-          }
+          if (delta !== 0) stockAdjustments += 1;
         }
 
         return { created, updated, stockAdjustments, warehousesCreated };

@@ -3,16 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { canTransitionSale } from "@/lib/sales";
+import { applyMovement } from "@/lib/inventory";
 import { saleStatusUpdateSchema } from "@/lib/validation";
-
-// Transiciones de estado permitidas. ENTREGADA y ANULADA son estados
-// finales: una vez ahí, la venta ya no cambia.
-const allowedTransitions: Record<string, string[]> = {
-  PENDIENTE: ["PAGADA", "ANULADA"],
-  PAGADA: ["ENTREGADA", "ANULADA"],
-  ENTREGADA: [],
-  ANULADA: [],
-};
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -39,52 +32,40 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       });
       if (!current) throw new Error("SALE_NOT_FOUND");
 
-      const allowed = allowedTransitions[current.status] ?? [];
-      if (!allowed.includes(nextStatus)) {
+      if (!canTransitionSale(current.status, nextStatus)) {
         throw new Error("INVALID_TRANSITION");
       }
 
-      // Al anular, se revierte el stock que la venta había descontado:
-      // un StockMovement de ENTRADA por cada línea, dentro de la misma
-      // transacción que el cambio de estado.
+      // El cambio de estado se hace acá, condicionado al estado que acabamos de
+      // leer, y no al final. Sin esto, dos peticiones simultáneas —un doble
+      // click con la red lenta— leerían ambas PENDIENTE, ambas pasarían la
+      // validación y ambas revertirían el stock: el inventario quedaría con el
+      // doble de unidades y dos movimientos legítimos respaldándolo. Con el
+      // WHERE por estado, la segunda no afecta ninguna fila y se aborta.
+      const claimed = await tx.sale.updateMany({
+        where: { id: params.id, status: current.status },
+        data: { status: nextStatus },
+      });
+      if (claimed.count === 0) throw new Error("CONCURRENT_UPDATE");
+
+      // Al anular se revierte el stock que la venta había descontado: una
+      // ENTRADA por cada línea, en la misma transacción que el cambio de estado.
       if (nextStatus === "ANULADA") {
         for (const item of current.items) {
-          await tx.stockMovement.create({
-            data: {
-              variantId: item.variantId,
-              warehouseId: current.warehouseId,
-              type: "ENTRADA",
-              quantity: item.quantity,
-              reason: `Anulación de venta #${current.number}`,
-              userId: session.user.id,
-              saleId: current.id,
-            },
-          });
-
-          const level = await tx.stockLevel.findUnique({
-            where: {
-              variantId_warehouseId: { variantId: item.variantId, warehouseId: current.warehouseId },
-            },
-          });
-          const currentQuantity = level?.quantity ?? 0;
-
-          await tx.stockLevel.upsert({
-            where: {
-              variantId_warehouseId: { variantId: item.variantId, warehouseId: current.warehouseId },
-            },
-            create: {
-              variantId: item.variantId,
-              warehouseId: current.warehouseId,
-              quantity: currentQuantity + item.quantity,
-            },
-            update: { quantity: currentQuantity + item.quantity },
+          await applyMovement(tx, {
+            variantId: item.variantId,
+            warehouseId: current.warehouseId,
+            type: "ENTRADA",
+            delta: item.quantity,
+            reason: `Anulación de venta #${current.number}`,
+            userId: session.user.id,
+            saleId: current.id,
           });
         }
       }
 
-      return tx.sale.update({
+      return tx.sale.findUniqueOrThrow({
         where: { id: params.id },
-        data: { status: nextStatus },
         include: { customer: true, items: { include: { variant: { include: { product: true } } } } },
       });
     });
@@ -98,6 +79,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (message === "INVALID_TRANSITION") {
       return NextResponse.json(
         { error: "Ese cambio de estado no está permitido" },
+        { status: 409 }
+      );
+    }
+    if (message === "CONCURRENT_UPDATE") {
+      return NextResponse.json(
+        { error: "Alguien más cambió el estado de esta venta. Recarga y vuelve a intentar." },
         { status: 409 }
       );
     }
