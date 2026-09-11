@@ -1,9 +1,9 @@
-# Cosme CRM — Fase 01: Fundaciones
+# Cosme CRM
 
-CRM de control de inventario para e-commerce multicanal. Esta primera fase
-entrega: autenticación con roles, catálogo de productos con variantes/SKU,
-e inventario básico (entradas, salidas y ajustes de stock con historial
-completo).
+CRM interno de Cosme SpA: control de inventario para e-commerce multicanal, con
+ventas, compras, clientes, proveedores y reportes.
+
+En producción: https://cosme-crm-green.vercel.app
 
 ## Stack
 
@@ -11,6 +11,35 @@ completo).
 - Tailwind CSS
 - PostgreSQL + Prisma ORM
 - NextAuth.js (credenciales + JWT) con control de acceso por rol
+- recharts para los gráficos, exceljs para la importación, zod para validación
+
+## Qué incluye hoy
+
+- **Autenticación y roles** — login con correo/contraseña, sesión JWT y cuatro roles:
+  Admin, Ventas, Bodega y Compras. Las reglas de permisos viven en un solo lugar,
+  `src/lib/rbac.ts`, y tanto las páginas como el menú lateral las consultan desde ahí.
+- **Catálogo de productos** — productos con una o más variantes/SKU, precio, costo,
+  umbral de stock bajo y categoría tomada de una lista curada. Incluye buscador (por
+  nombre, SKU o categoría) y acciones de bloquear, reactivar y eliminar.
+- **Inventario** — entradas, salidas y ajustes por bodega, con historial completo. El
+  stock actual es el acumulado de sus movimientos, recalculado dentro de la misma
+  transacción. Los movimientos manuales se pueden editar, duplicar o eliminar (solo
+  Admin); los generados por una venta o compra quedan bloqueados para no
+  desincronizar esos módulos.
+- **Ventas** — órdenes con estados PENDIENTE → PAGADA → ENTREGADA, o ANULADA.
+  Descuentan stock al crearse y lo devuelven al anularse.
+- **Clientes** — ficha con historial de compras.
+- **Compras** — órdenes con estados PENDIENTE → RECIBIDA, o ANULADA. Suman stock al
+  marcarse como recibidas.
+- **Proveedores** — ficha con historial.
+- **Reportes** — ventas por estado, ventas mensuales de los últimos seis meses, uso de
+  bodega de los últimos 30 días, stock por categoría y top 10 de stock crítico.
+- **Importación masiva** — carga de productos desde Excel, con vista previa antes de
+  confirmar.
+- **Multi-bodega preparado, no activado** — el esquema modela `Warehouse` como entidad
+  propia y tanto `StockLevel` como `StockMovement` ya llevan `warehouseId`. Hoy opera
+  con una sola bodega por defecto; activar varias es trabajo de interfaz y endpoints,
+  no una migración de datos.
 
 ## Requisitos
 
@@ -19,110 +48,107 @@ completo).
 
 ## Puesta en marcha local
 
+Instalar dependencias:
+
 ```bash
-# 1. Instalar dependencias
 npm install
+```
 
-# 2. Configurar variables de entorno
+Configurar variables de entorno. Copia el ejemplo y edítalo con tu cadena de conexión
+a PostgreSQL; para `NEXTAUTH_SECRET` sirve la salida de `openssl rand -base64 32`:
+
+```bash
 cp .env.example .env
-# Edita .env con tu cadena de conexión a PostgreSQL y genera un secreto:
-# openssl rand -base64 32
+```
 
-# 3. Aplicar el esquema a la base de datos
+Aplicar el esquema a la base de datos y cargar datos de ejemplo:
+
+```bash
 npx prisma migrate dev
-
-# 4. Cargar datos de ejemplo (usuarios de prueba + catálogo)
 npm run db:seed
+```
 
-# 5. Levantar el servidor de desarrollo
+Levantar el servidor de desarrollo:
+
+```bash
 npm run dev
 ```
 
 Abre http://localhost:3000 — te va a redirigir a `/login`.
 
-### Usuarios de prueba (creados por el seed)
+### Usuarios de ejemplo
 
-| Rol       | Correo             | Contraseña   |
-|-----------|---------------------|--------------|
-| Admin     | admin@cosme.cl       | Admin123!    |
-| Ventas    | ventas@cosme.cl      | Ventas123!   |
-| Bodega    | bodega@cosme.cl      | Bodega123!   |
-| Compras   | compras@cosme.cl     | Compras123!  |
+`npm run db:seed` crea un usuario por rol (`admin@cosme.cl`, `ventas@cosme.cl`,
+`bodega@cosme.cl`, `compras@cosme.cl`) junto con un catálogo de prueba. Las
+contraseñas están en `prisma/seed.ts`.
 
-Cámbialas (o elimina estos usuarios) antes de usar el sistema con datos reales.
-
-## Qué incluye esta fase
-
-- **Autenticación y roles** — login con correo/contraseña, sesión JWT,
-  4 roles (Admin, Ventas, Bodega, Compras). Las reglas de permisos viven en
-  `src/lib/rbac.ts`: hoy solo Admin gestiona el catálogo y Admin/Bodega
-  registran movimientos de stock — a medida que se sumen Ventas y Compras
-  (fases 02-03) ese es el único archivo que hay que ampliar.
-- **Catálogo de productos** — productos con una o más variantes/SKU, precio,
-  costo y umbral de stock bajo por variante.
-- **Inventario** — registro de entradas, salidas y ajustes por bodega, con
-  historial completo (nunca se edita ni se borra: cada movimiento queda
-  registrado). El stock actual siempre es la suma de sus movimientos.
-- **Multi-bodega preparado, no activado** — el esquema de datos ya modela
-  `Warehouse` como una entidad propia. La Fase 01 opera con una sola bodega
-  por defecto; activar varias más adelante es agregar registros y UI, no
-  rediseñar la base de datos.
-- **Panel** — resumen de productos, unidades en stock, alertas de stock bajo
-  y actividad reciente.
+**Son solo para desarrollo local.** No existen en producción y no deben usarse con
+datos reales: `npm run db:seed` está pensado para una base desechable.
 
 ## Estructura del proyecto
 
 ```
 prisma/
-  schema.prisma       Modelo de datos
+  schema.prisma        Modelo de datos
   migrations/          Migraciones SQL
-  seed.ts              Datos de ejemplo
+  seed.ts              Usuarios y catálogo de ejemplo (desarrollo)
+  seed-prod.ts         Bodega por defecto + primer usuario admin (producción)
 src/
   app/
-    login/              Página de inicio de sesión
-    (app)/              Rutas protegidas (panel, productos, inventario)
-    api/                Endpoints REST
-  components/           Componentes de React (formularios, tablas, UI base)
+    login/             Página de inicio de sesión
+    (app)/             Rutas protegidas: panel, productos, inventario, ventas,
+                       clientes, compras, proveedores, reportes, usuarios
+    api/               Endpoints REST. Aquí vive la lógica transaccional de
+                       stock: ventas, compras y movimientos de inventario
+  components/          Componentes de React (formularios, tablas, UI base)
   lib/
-    auth.ts             Configuración de NextAuth
-    rbac.ts             Reglas de permisos por rol
-    prisma.ts           Cliente de Prisma
-    validation.ts       Esquemas de validación (zod)
+    auth.ts            Configuración de NextAuth
+    rbac.ts            Reglas de permisos por rol
+    prisma.ts          Cliente de Prisma
+    validation.ts      Esquemas de validación (zod)
+    sales.ts           Estados de venta: etiquetas y transiciones permitidas
+    purchases.ts       Estados de compra: etiquetas y transiciones permitidas
+    product-categories.ts  Lista curada de categorías
+  middleware.ts        Protección de rutas
 ```
 
-## Desplegar a producción
+## Despliegue
 
-Pensado para desplegarse sin infraestructura propia:
+El proyecto ya está desplegado: Vercel para la aplicación (deploy automático al hacer
+push a `main`) y Neon para la base de datos.
+
+Para levantar un entorno nuevo desde cero:
 
 1. **Base de datos**: crea un proyecto en [Neon](https://neon.tech) o
-   [Supabase](https://supabase.com) (plan gratuito para partir) y copia su
-   cadena de conexión a `DATABASE_URL`.
-2. **Aplicación**: conecta el repositorio en [Vercel](https://vercel.com),
-   define las variables de entorno (`DATABASE_URL`, `NEXTAUTH_SECRET`,
-   `NEXTAUTH_URL` con tu dominio) y despliega.
-3. Corre las migraciones contra la base de datos de producción:
+   [Supabase](https://supabase.com) y copia su cadena de conexión a `DATABASE_URL`.
+2. **Aplicación**: conecta el repositorio en [Vercel](https://vercel.com) y define
+   `DATABASE_URL`, `NEXTAUTH_SECRET` y `NEXTAUTH_URL` con tu dominio.
+3. Corre las migraciones contra la base de producción con
    `npx prisma migrate deploy`.
-4. Opcional: corre el seed una vez (`npm run db:seed`) para tener el primer
-   usuario Admin, o crea uno manualmente con un script equivalente.
+4. Crea el primer usuario administrador con `npm run db:seed:prod`, pasándole
+   `SEED_ADMIN_EMAIL`, `SEED_ADMIN_NAME` y `SEED_ADMIN_PASSWORD`. El script no
+   modifica un usuario que ya exista, así que es seguro volver a correrlo. De ahí en
+   adelante los usuarios se gestionan desde `/users` dentro de la app.
 
-## Subir a GitHub
+No corras `npm run db:seed` contra producción: ese carga usuarios y productos de
+prueba.
 
-Este proyecto ya viene con un repositorio git inicializado y el primer
-commit hecho. Para subirlo:
+## Verificación antes de un push
+
+No hay tests automatizados todavía. La verificación mínima es:
 
 ```bash
-git remote add origin https://github.com/<tu-usuario>/cosme-crm.git
-git branch -M main
-git push -u origin main
+npx tsc --noEmit
+npm run build
 ```
 
-## Próximos pasos (fases siguientes)
+## Próximos pasos
 
-- **Fase 02** — Ventas y clientes (CRM): ficha de cliente, cotizaciones,
-  órdenes de venta que descuenten stock automáticamente.
-- **Fase 03** — Compras y proveedores: órdenes de compra, recepción de
-  mercadería contra el inventario.
-- **Fase 04** — Reportes y dashboards: rotación, valorización de stock,
-  ventas por período.
-- **Fase 05** — Integraciones externas: tienda propia y marketplaces.
-- **Fase 06** — Activar multi-bodega en la interfaz.
+- **Cotizaciones** — Cosme cotiza antes de vender, y hoy ese paso ocurre fuera del
+  sistema: se redigita como venta cuando el cliente acepta. Es el hueco más grande
+  entre lo que el CRM modela y cómo opera el negocio.
+- **Tests de la lógica de stock** — es la lógica que más duele si se rompe, porque
+  desincroniza el inventario en silencio.
+- **Monitoreo de errores en producción** — hoy un error en Vercel pasa inadvertido.
+- **Activar multi-bodega en la interfaz** — cuando el negocio lo necesite.
+- **Integraciones externas** — tienda propia y marketplaces.
