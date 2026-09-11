@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { sumQuantities } from "@/lib/decimal";
 
 interface Customer {
   id: string;
@@ -20,7 +21,7 @@ interface Variant {
   attributes: string | null;
   price: string;
   product: { name: string };
-  stockLevels: { quantity: number }[];
+  stockLevels: { quantity: number | string }[];
 }
 
 interface LineItem {
@@ -48,7 +49,7 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
   function stockFor(variantId: string) {
     const variant = variantsById.get(variantId);
     if (!variant) return 0;
-    return variant.stockLevels.reduce((sum, l) => sum + l.quantity, 0);
+    return sumQuantities(variant.stockLevels.map((l) => l.quantity));
   }
 
   function updateLine(index: number, patch: Partial<LineItem>) {
@@ -198,8 +199,8 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
                     <Input
                       id={`item-qty-${index}`}
                       type="number"
-                      min="1"
-                      step="1"
+                      min="0.001"
+                      step="0.001"
                       value={line.quantity}
                       onChange={(e) => updateLine(index, { quantity: e.target.value })}
                     />

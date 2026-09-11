@@ -41,7 +41,26 @@ export default async function ProductsPage() {
 
       <Card>
         <CardContent className="p-0">
-          <ProductsList products={products} canManage={canManage} />
+          {/* Mapeo explícito y no JSON.parse(JSON.stringify()): los Decimal
+              se convierten a texto acá, con TypeScript verificando el límite,
+              y de paso solo viaja al navegador lo que la tabla usa. */}
+          <ProductsList
+            products={products.map((p) => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+              category: p.category,
+              active: p.active,
+              variants: p.variants.map((v) => ({
+                id: v.id,
+                sku: v.sku,
+                active: v.active,
+                lowStockThreshold: v.lowStockThreshold.toString(),
+                stockLevels: v.stockLevels.map((l) => ({ quantity: l.quantity.toString() })),
+              })),
+            }))}
+            canManage={canManage}
+          />
         </CardContent>
       </Card>
     </div>

@@ -183,8 +183,8 @@ export function PurchaseForm({ suppliers, variants }: { suppliers: Supplier[]; v
                   <Input
                     id={`p-item-qty-${index}`}
                     type="number"
-                    min="1"
-                    step="1"
+                    min="0.001"
+                    step="0.001"
                     value={line.quantity}
                     onChange={(e) => updateLine(index, { quantity: e.target.value })}
                   />

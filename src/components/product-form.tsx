@@ -196,7 +196,7 @@ export function ProductForm() {
                     id={`threshold-${index}`}
                     type="number"
                     min="0"
-                    step="1"
+                    step="0.001"
                     value={variant.lowStockThreshold}
                     onChange={(e) => updateVariant(index, { lowStockThreshold: e.target.value })}
                   />
@@ -207,7 +207,7 @@ export function ProductForm() {
                     id={`initial-${index}`}
                     type="number"
                     min="0"
-                    step="1"
+                    step="0.001"
                     value={variant.initialQuantity}
                     onChange={(e) => updateVariant(index, { initialQuantity: e.target.value })}
                   />

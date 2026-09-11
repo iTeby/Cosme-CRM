@@ -10,14 +10,22 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuItem, DotsIcon } from "@/components/ui/dropdown-menu";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { formatSignedQuantity, sumQuantities, toNumber } from "@/lib/decimal";
+import {
+  manualMovementLabels,
+  manualMovementTypes,
+  movementTypeLabels,
+  movementTypeTone,
+  type MovementType,
+} from "@/lib/movements";
+import { formatDate } from "@/lib/utils";
 
 interface Variant {
   id: string;
   sku: string;
-  lowStockThreshold: number;
+  lowStockThreshold: number | string;
   product: { name: string };
-  stockLevels: { quantity: number; warehouseId: string }[];
+  stockLevels: { quantity: number | string; warehouseId: string }[];
 }
 
 interface Warehouse {
@@ -28,28 +36,16 @@ interface Warehouse {
 
 interface Movement {
   id: string;
-  type: "ENTRADA" | "SALIDA" | "AJUSTE";
-  quantity: number;
+  type: MovementType;
+  quantity: number | string;
   reason: string | null;
   createdAt: string;
-  variant: { sku: string; product: { name: string } };
+  variant: { sku: string; unit: string; product: { name: string } };
   warehouse: { name: string };
   user: { name: string | null };
   saleId: string | null;
   purchaseId: string | null;
 }
-
-const typeLabels: Record<Movement["type"], string> = {
-  ENTRADA: "Entrada",
-  SALIDA: "Salida",
-  AJUSTE: "Ajuste",
-};
-
-const typeTone: Record<Movement["type"], "good" | "critical" | "neutral"> = {
-  ENTRADA: "good",
-  SALIDA: "critical",
-  AJUSTE: "neutral",
-};
 
 export function InventoryClient({
   variants,
@@ -69,8 +65,8 @@ export function InventoryClient({
   const lowStock = useMemo(
     () =>
       variants.filter((v) => {
-        const total = v.stockLevels.reduce((s, l) => s + l.quantity, 0);
-        return total <= v.lowStockThreshold;
+        const total = sumQuantities(v.stockLevels.map((l) => l.quantity));
+        return total <= toNumber(v.lowStockThreshold);
       }),
     [variants]
   );
@@ -166,7 +162,7 @@ function MovementRow({
   const [type, setType] = useState<Movement["type"]>(m.type);
   // La cantidad se muestra siempre en positivo en el formulario de edición
   // (igual que al crear un movimiento); el signo lo decide el tipo.
-  const [quantity, setQuantity] = useState(String(Math.abs(m.quantity)));
+  const [quantity, setQuantity] = useState(String(Math.abs(toNumber(m.quantity))));
   const [reason, setReason] = useState(m.reason ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -175,7 +171,7 @@ function MovementRow({
 
   function startEdit() {
     setType(m.type);
-    setQuantity(String(Math.abs(m.quantity)));
+    setQuantity(String(Math.abs(toNumber(m.quantity))));
     setReason(m.reason ?? "");
     setError(null);
     setEditing(true);
@@ -244,16 +240,18 @@ function MovementRow({
         </Td>
         <Td>{m.warehouse.name}</Td>
         <Td>
-          <Select value={type} onChange={(e) => setType(e.target.value as Movement["type"])}>
-            <option value="ENTRADA">Entrada</option>
-            <option value="SALIDA">Salida</option>
-            <option value="AJUSTE">Ajuste (+/-)</option>
+          <Select value={type} onChange={(e) => setType(e.target.value as MovementType)}>
+            {manualMovementTypes.map((t) => (
+              <option key={t} value={t}>
+                {manualMovementLabels[t]}
+              </option>
+            ))}
           </Select>
         </Td>
         <Td>
           <Input
             type="number"
-            step="1"
+            step="0.001"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             className="w-24"
@@ -300,11 +298,10 @@ function MovementRow({
       </Td>
       <Td>{m.warehouse.name}</Td>
       <Td>
-        <Badge tone={typeTone[m.type]}>{typeLabels[m.type]}</Badge>
+        <Badge tone={movementTypeTone[m.type]}>{movementTypeLabels[m.type]}</Badge>
       </Td>
-      <Td className={m.quantity < 0 ? "text-red-700" : "text-emerald-700"}>
-        {m.quantity > 0 ? "+" : ""}
-        {formatNumber(m.quantity)}
+      <Td className={toNumber(m.quantity) < 0 ? "text-red-700" : "text-emerald-700"}>
+        {formatSignedQuantity(m.quantity, m.variant.unit)}
       </Td>
       <Td className="text-slate-500">{m.reason || "—"}</Td>
       <Td className="text-slate-500">{m.user.name || "—"}</Td>
@@ -440,11 +437,13 @@ function MovementForm({
             <Select
               id="mv-type"
               value={type}
-              onChange={(e) => setType(e.target.value as Movement["type"])}
+              onChange={(e) => setType(e.target.value as MovementType)}
             >
-              <option value="ENTRADA">Entrada</option>
-              <option value="SALIDA">Salida</option>
-              <option value="AJUSTE">Ajuste (+/-)</option>
+              {manualMovementTypes.map((t) => (
+                <option key={t} value={t}>
+                  {manualMovementLabels[t]}
+                </option>
+              ))}
             </Select>
           </div>
           <div>
@@ -452,7 +451,7 @@ function MovementForm({
             <Input
               id="mv-quantity"
               type="number"
-              step="1"
+              step="0.001"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />

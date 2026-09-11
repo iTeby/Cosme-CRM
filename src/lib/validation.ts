@@ -1,5 +1,23 @@
 import { z } from "zod";
 import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
+import { manualMovementTypes } from "@/lib/movements";
+
+// Toda cantidad y todo monto pasa por acá. Sin .finite() y sin tope, zod acepta
+// "1e30" e "Infinity": el primero llega a Postgres y revienta con un overflow
+// de numeric que el catch genérico reporta como 500, y el segundo lo convierte
+// toNumber() en 0 sin avisar, así que se escribe un movimiento distinto al
+// pedido. El tope es holgado para un almacén y angosto para un dedazo.
+const MAX_CANTIDAD = 1_000_000;
+const MAX_LINEAS = 200;
+
+const cantidadPositiva = (mensaje: string) =>
+  z.coerce.number().finite("Cantidad inválida").positive(mensaje).max(MAX_CANTIDAD, "Cantidad demasiado grande");
+
+const cantidadNoNegativa = (mensaje: string) =>
+  z.coerce.number().finite("Cantidad inválida").min(0, mensaje).max(MAX_CANTIDAD, "Cantidad demasiado grande");
+
+const monto = (mensaje: string) =>
+  z.coerce.number().finite("Valor inválido").min(0, mensaje).max(9_999_999_999, "Valor demasiado grande");
 
 // Se mantiene opcional (no todo producto tiene categoría asignada, p.ej. los
 // importados por Excel), pero si se envía un valor debe ser uno de la lista
@@ -11,18 +29,19 @@ const categorySchema = z
 
 export const variantInputSchema = z.object({
   sku: z.string().trim().min(2, "SKU muy corto").max(60),
+  unit: z.string().trim().min(1).max(8).default("UN"),
   attributes: z.string().trim().max(200).optional().or(z.literal("")),
-  price: z.coerce.number().min(0, "El precio no puede ser negativo"),
-  cost: z.coerce.number().min(0, "El costo no puede ser negativo"),
-  lowStockThreshold: z.coerce.number().int().min(0).default(5),
-  initialQuantity: z.coerce.number().int().min(0).default(0),
+  price: monto("El precio no puede ser negativo"),
+  cost: monto("El costo no puede ser negativo"),
+  lowStockThreshold: cantidadNoNegativa("El umbral no puede ser negativo").default(5),
+  initialQuantity: cantidadNoNegativa("La cantidad no puede ser negativa").default(0),
 });
 
 export const productCreateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   category: categorySchema,
-  variants: z.array(variantInputSchema).min(1, "Agrega al menos una variante/SKU"),
+  variants: z.array(variantInputSchema).min(1, "Agrega al menos una variante/SKU").max(MAX_LINEAS),
 });
 
 export const productUpdateSchema = z.object({
@@ -34,10 +53,11 @@ export const productUpdateSchema = z.object({
 
 export const variantUpdateSchema = z.object({
   sku: z.string().trim().min(2, "SKU muy corto").max(60),
+  unit: z.string().trim().min(1).max(8).default("UN"),
   attributes: z.string().trim().max(200).optional().or(z.literal("")),
-  price: z.coerce.number().min(0),
-  cost: z.coerce.number().min(0),
-  lowStockThreshold: z.coerce.number().int().min(0),
+  price: monto("El precio no puede ser negativo"),
+  cost: monto("El costo no puede ser negativo"),
+  lowStockThreshold: cantidadNoNegativa("El umbral no puede ser negativo"),
   active: z.boolean(),
 });
 
@@ -77,14 +97,14 @@ export const customerUpdateSchema = customerCreateSchema.extend({
 
 export const saleItemInputSchema = z.object({
   variantId: z.string().min(1, "Selecciona un producto"),
-  quantity: z.coerce.number().int().min(1, "La cantidad debe ser al menos 1"),
-  unitPrice: z.coerce.number().min(0, "El precio no puede ser negativo"),
+  quantity: cantidadPositiva("La cantidad debe ser mayor que 0"),
+  unitPrice: monto("El precio no puede ser negativo"),
 });
 
 export const saleCreateSchema = z.object({
   customerId: z.string().min(1, "Selecciona un cliente"),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
-  items: z.array(saleItemInputSchema).min(1, "Agrega al menos un producto"),
+  items: z.array(saleItemInputSchema).min(1, "Agrega al menos un producto").max(MAX_LINEAS),
 });
 
 export const saleStatusUpdateSchema = z.object({
@@ -106,14 +126,14 @@ export const supplierUpdateSchema = supplierCreateSchema.extend({
 
 export const purchaseItemInputSchema = z.object({
   variantId: z.string().min(1, "Selecciona un producto"),
-  quantity: z.coerce.number().int().min(1, "La cantidad debe ser al menos 1"),
-  unitCost: z.coerce.number().min(0, "El costo no puede ser negativo"),
+  quantity: cantidadPositiva("La cantidad debe ser mayor que 0"),
+  unitCost: monto("El costo no puede ser negativo"),
 });
 
 export const purchaseCreateSchema = z.object({
   supplierId: z.string().min(1, "Selecciona un proveedor"),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
-  items: z.array(purchaseItemInputSchema).min(1, "Agrega al menos un producto"),
+  items: z.array(purchaseItemInputSchema).min(1, "Agrega al menos un producto").max(MAX_LINEAS),
 });
 
 export const purchaseStatusUpdateSchema = z.object({
@@ -124,28 +144,92 @@ export const productImportRowSchema = z.object({
   rowNumber: z.number().int(),
   sku: z.string().trim().min(1, "SKU vacío").max(60, "SKU muy largo"),
   name: z.string().trim().min(1, "Nombre vacío").max(120, "Nombre muy largo"),
-  qty: z.coerce
-    .number({ invalid_type_error: "Cantidad inválida" })
-    .int("La cantidad debe ser un número entero")
-    .min(0, "La cantidad no puede ser negativa"),
+  qty: cantidadNoNegativa("La cantidad no puede ser negativa"),
   warehouseName: z.string().trim().min(1, "Bodega vacía").max(80, "Nombre de bodega muy largo"),
-  price: z.coerce
-    .number({ invalid_type_error: "Valor inválido" })
-    .min(0, "El valor no puede ser negativo"),
+  price: monto("El valor no puede ser negativo"),
 });
 
 export const productImportCommitSchema = z.object({
   rows: z
     .array(productImportRowSchema)
     .min(1, "No hay filas válidas para importar")
-    .max(5000, "Demasiadas filas para importar de una vez"),
+    // 500 y no 5000: cada fila hace varias consultas seriales a Neon dentro de
+    // una sola transacción con timeout de 55 s. Con miles de filas el timeout
+    // llega antes que el final y revierte la importación completa.
+    .max(500, "Demasiadas filas para importar de una vez. Divide el archivo."),
 });
+
+/**
+ * Primer mensaje legible de un error de zod.
+ *
+ * Devolver `error.flatten()` manda un objeto al navegador, y los formularios
+ * solo saben mostrar un texto: el usuario termina viendo el mensaje genérico
+ * de "no se pudo guardar" y sin idea de qué corregir.
+ */
+export function primerMensaje(error: z.ZodError): string {
+  const flat = error.flatten();
+  const deCampo = Object.values(flat.fieldErrors).flat().find(Boolean);
+  return flat.formErrors[0] ?? deCampo ?? "Los datos enviados no son válidos";
+}
+
+// --- Recetas y producción ---
+
+export const recipeItemInputSchema = z.object({
+  variantId: z.string().min(1, "Selecciona un insumo"),
+  quantity: cantidadPositiva("La cantidad debe ser mayor que 0"),
+});
+
+export const recipeUpsertSchema = z
+  .object({
+    yield: cantidadPositiva("El rendimiento debe ser mayor que 0"),
+    notes: z.string().trim().max(500).optional().or(z.literal("")),
+    active: z.boolean().default(true),
+    items: z.array(recipeItemInputSchema).min(1, "Agrega al menos un insumo").max(50),
+  })
+  .refine(
+    (r) => new Set(r.items.map((i) => i.variantId)).size === r.items.length,
+    { message: "Hay un insumo repetido en la receta", path: ["items"] }
+  );
+
+export const productionItemInputSchema = z.object({
+  variantId: z.string().min(1, "Selecciona un producto"),
+  quantityProduced: cantidadNoNegativa("La cantidad no puede ser negativa"),
+  quantityWasted: cantidadNoNegativa("La merma no puede ser negativa").default(0),
+});
+
+export const productionCreateSchema = z
+  .object({
+    warehouseId: z.string().min(1).optional(),
+    // Acotada: el listado ordena por esta fecha, así que un 2099 por dedazo se
+    // queda arriba de todo para siempre. Un año atrás cubre correcciones
+    // tardías; un día adelante cubre husos horarios.
+    producedOn: z.coerce
+      .date()
+      .min(new Date(Date.now() - 365 * 24 * 3600 * 1000), "La fecha es demasiado antigua")
+      .max(new Date(Date.now() + 24 * 3600 * 1000), "La fecha no puede estar en el futuro")
+      .optional(),
+    notes: z.string().trim().max(500).optional().or(z.literal("")),
+    items: z.array(productionItemInputSchema).min(1, "Agrega al menos un producto").max(MAX_LINEAS),
+  })
+  .refine(
+    (p) => new Set(p.items.map((i) => i.variantId)).size === p.items.length,
+    { message: "Hay un producto repetido", path: ["items"] }
+  )
+  .refine(
+    (p) => p.items.some((i) => i.quantityProduced > 0 || i.quantityWasted > 0),
+    { message: "Registra al menos una cantidad producida o una merma", path: ["items"] }
+  );
 
 export const stockMovementSchema = z.object({
   variantId: z.string().min(1, "Selecciona un producto"),
   warehouseId: z.string().min(1, "Selecciona una bodega"),
-  type: z.enum(["ENTRADA", "SALIDA", "AJUSTE"]),
-  quantity: z.coerce.number().int().refine((n) => n !== 0, "La cantidad no puede ser 0"),
+  type: z.enum(manualMovementTypes),
+  quantity: z.coerce
+    .number()
+    .finite("Cantidad inválida")
+    .max(MAX_CANTIDAD, "Cantidad demasiado grande")
+    .min(-MAX_CANTIDAD, "Cantidad demasiado grande")
+    .refine((n) => n !== 0, "La cantidad no puede ser 0"),
   reason: z.string().trim().max(200).optional().or(z.literal("")),
 });
 
@@ -153,7 +237,12 @@ export const stockMovementSchema = z.object({
 // se permite mover el movimiento a otro producto/bodega (eso equivale a
 // borrar y crear uno nuevo) — solo se puede corregir tipo, cantidad y motivo.
 export const stockMovementUpdateSchema = z.object({
-  type: z.enum(["ENTRADA", "SALIDA", "AJUSTE"]),
-  quantity: z.coerce.number().int().refine((n) => n !== 0, "La cantidad no puede ser 0"),
+  type: z.enum(manualMovementTypes),
+  quantity: z.coerce
+    .number()
+    .finite("Cantidad inválida")
+    .max(MAX_CANTIDAD, "Cantidad demasiado grande")
+    .min(-MAX_CANTIDAD, "Cantidad demasiado grande")
+    .refine((n) => n !== 0, "La cantidad no puede ser 0"),
   reason: z.string().trim().max(200).optional().or(z.literal("")),
 });

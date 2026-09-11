@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { saleStatusLabels, type SaleStatus } from "@/lib/sales";
 import { ReportsCharts } from "@/components/reports-charts";
+import { toNumber } from "@/lib/decimal";
 
 // Todas las consultas de esta página son de solo lectura y se calculan al
 // vuelo desde las tablas existentes (Sale, StockMovement, StockLevel) — no
@@ -92,9 +93,14 @@ export default async function ReportsPage() {
   for (const row of movementsByWarehouse) {
     const entry = warehouseUsageMap.get(row.warehouseId);
     if (!entry) continue;
-    const total = Math.abs(row._sum.quantity ?? 0);
-    if (row.type === "ENTRADA") entry.entradas += total;
-    else if (row.type === "SALIDA") entry.salidas += total;
+    // PRODUCCION cuenta como entrada; MERMA y CONSUMO como salida. AJUSTE
+    // sigue quedando fuera del gráfico: no es movimiento de mercadería, es
+    // una corrección.
+    const total = Math.abs(toNumber(row._sum.quantity));
+    if (row.type === "ENTRADA" || row.type === "PRODUCCION") entry.entradas += total;
+    else if (row.type === "SALIDA" || row.type === "MERMA" || row.type === "CONSUMO") {
+      entry.salidas += total;
+    }
   }
   const warehouseUsage = Array.from(warehouseUsageMap.values());
 
@@ -106,17 +112,18 @@ export default async function ReportsPage() {
   >();
   for (const level of stockLevels) {
     const category = level.variant.product.category || "Sin categoría";
-    categoryTotals.set(category, (categoryTotals.get(category) ?? 0) + level.quantity);
+    const quantity = toNumber(level.quantity);
+    categoryTotals.set(category, (categoryTotals.get(category) ?? 0) + quantity);
 
     const existing = variantTotals.get(level.variantId);
     if (existing) {
-      existing.quantity += level.quantity;
+      existing.quantity += quantity;
     } else {
       variantTotals.set(level.variantId, {
         name: level.variant.product.name,
         sku: level.variant.sku,
-        quantity: level.quantity,
-        threshold: level.variant.lowStockThreshold,
+        quantity,
+        threshold: toNumber(level.variant.lowStockThreshold),
       });
     }
   }

@@ -74,7 +74,7 @@ async function main() {
 
     for (const v of item.variants) {
       const variant = await prisma.productVariant.upsert({
-        where: { sku: v.sku },
+        where: { tenantId_sku: { tenantId: "cosme", sku: v.sku } },
         update: {},
         create: {
           productId: product.id,

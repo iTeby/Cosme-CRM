@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatQuantity } from "@/lib/decimal";
 import {
   purchaseStatusLabels,
   purchaseStatusTone,
@@ -17,7 +18,7 @@ import {
 
 interface PurchaseItem {
   id: string;
-  quantity: number;
+  quantity: number | string;
   unitCost: string;
   subtotal: string;
   variant: {
@@ -130,7 +131,7 @@ export function PurchaseDetail({ purchase, canManage }: { purchase: PurchaseData
                     {item.variant.product.name}{" "}
                     <span className="font-mono text-xs text-slate-400">({item.variant.sku})</span>
                   </Td>
-                  <Td>{item.quantity}</Td>
+                  <Td>{formatQuantity(item.quantity)}</Td>
                   <Td>{formatCurrency(item.unitCost)}</Td>
                   <Td>{formatCurrency(item.subtotal)}</Td>
                 </Tr>

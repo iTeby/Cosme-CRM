@@ -11,11 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatQuantity, sumQuantities, toNumber } from "@/lib/decimal";
 import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
 
 interface StockLevel {
   id: string;
-  quantity: number;
+  quantity: number | string;
   warehouse: { id: string; name: string };
 }
 
@@ -25,7 +26,7 @@ interface Variant {
   attributes: string | null;
   price: string;
   cost: string;
-  lowStockThreshold: number;
+  lowStockThreshold: number | string;
   active: boolean;
   stockLevels: StockLevel[];
 }
@@ -243,8 +244,8 @@ function VariantRow({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const totalStock = variant.stockLevels.reduce((sum, l) => sum + l.quantity, 0);
-  const lowStock = totalStock <= variant.lowStockThreshold;
+  const totalStock = sumQuantities(variant.stockLevels.map((l) => l.quantity));
+  const lowStock = totalStock <= toNumber(variant.lowStockThreshold);
 
   async function handleSave() {
     setError(null);
@@ -342,7 +343,7 @@ function VariantRow({
           </Badge>
         )}
       </Td>
-      <Td>{variant.lowStockThreshold}</Td>
+      <Td>{formatQuantity(variant.lowStockThreshold)}</Td>
       <Td>
         <Badge tone={variant.active ? "good" : "neutral"}>
           {variant.active ? "Activa" : "Inactiva"}

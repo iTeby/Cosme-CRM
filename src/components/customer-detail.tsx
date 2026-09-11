@@ -14,7 +14,7 @@ import { saleStatusLabels, saleStatusTone, type SaleStatus } from "@/lib/sales";
 
 interface SaleItemRow {
   id: string;
-  quantity: number;
+  quantity: number | string;
 }
 
 interface SaleRow {

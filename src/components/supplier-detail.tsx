@@ -14,7 +14,7 @@ import { purchaseStatusLabels, purchaseStatusTone, type PurchaseStatus } from "@
 
 interface PurchaseItemRow {
   id: string;
-  quantity: number;
+  quantity: number | string;
 }
 
 interface PurchaseRow {

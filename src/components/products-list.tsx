@@ -8,16 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuItem, DotsIcon } from "@/components/ui/dropdown-menu";
 import { formatNumber } from "@/lib/utils";
+import { sumQuantities, toNumber } from "@/lib/decimal";
 
 interface StockLevel {
-  quantity: number;
+  quantity: number | string;
 }
 
 interface Variant {
   id: string;
   sku: string;
   active: boolean;
-  lowStockThreshold: number;
+  lowStockThreshold: number | string;
   stockLevels: StockLevel[];
 }
 
@@ -123,12 +124,12 @@ function ProductRow({
   const [error, setError] = useState<string | null>(null);
 
   const totalStock = product.variants.reduce(
-    (sum, v) => sum + v.stockLevels.reduce((s, l) => s + l.quantity, 0),
+    (sum, v) => sum + sumQuantities(v.stockLevels.map((l) => l.quantity)),
     0
   );
   const hasLowStock = product.variants.some((v) => {
-    const qty = v.stockLevels.reduce((s, l) => s + l.quantity, 0);
-    return qty <= v.lowStockThreshold;
+    const qty = sumQuantities(v.stockLevels.map((l) => l.quantity));
+    return qty <= toNumber(v.lowStockThreshold);
   });
 
   async function handleToggleActive() {

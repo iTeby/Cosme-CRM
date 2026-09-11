@@ -6,6 +6,8 @@ import { can } from "@/lib/rbac";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { formatQuantity, sumQuantities, toNumber } from "@/lib/decimal";
+import { movementTypeLabels } from "@/lib/movements";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -33,13 +35,15 @@ export default async function DashboardPage() {
       : Promise.resolve(0),
   ]);
 
-  const totalUnits = variants.reduce(
-    (sum, v) => sum + v.stockLevels.reduce((s, l) => s + l.quantity, 0),
-    0
-  );
+  // Solo los productos que se cuentan por unidad. Sumar kilos de harina con
+  // unidades de pan en una sola cifra no significa nada, y desde que hay venta
+  // por peso el catálogo mezcla las dos cosas.
+  const totalUnits = variants
+    .filter((v) => v.unit === "UN")
+    .reduce((sum, v) => sum + sumQuantities(v.stockLevels.map((l) => l.quantity)), 0);
   const lowStock = variants.filter((v) => {
-    const total = v.stockLevels.reduce((s, l) => s + l.quantity, 0);
-    return total <= v.lowStockThreshold;
+    const total = sumQuantities(v.stockLevels.map((l) => l.quantity));
+    return total <= toNumber(v.lowStockThreshold);
   });
 
   const stats = [
@@ -94,7 +98,7 @@ export default async function DashboardPage() {
             ) : (
               <ul className="space-y-2">
                 {lowStock.slice(0, 8).map((v) => {
-                  const total = v.stockLevels.reduce((s, l) => s + l.quantity, 0);
+                  const total = sumQuantities(v.stockLevels.map((l) => l.quantity));
                   return (
                     <li key={v.id} className="flex items-center justify-between text-sm">
                       <Link
@@ -104,7 +108,7 @@ export default async function DashboardPage() {
                         {v.product.name}{" "}
                         <span className="font-mono text-xs text-slate-400">({v.sku})</span>
                       </Link>
-                      <Badge tone="warn">{formatNumber(total)} uds.</Badge>
+                      <Badge tone="warn">{formatQuantity(total, v.unit)}</Badge>
                     </li>
                   );
                 })}
@@ -126,12 +130,9 @@ export default async function DashboardPage() {
                   <li key={m.id} className="text-sm">
                     <p className="text-slate-700">
                       <span className="font-medium">{m.user.name || "Alguien"}</span>{" "}
-                      {m.type === "ENTRADA"
-                        ? "registró una entrada de"
-                        : m.type === "SALIDA"
-                          ? "registró una salida de"
-                          : "ajustó"}{" "}
-                      {Math.abs(m.quantity)} uds. de {m.variant.product.name}
+                      registró {movementTypeLabels[m.type].toLowerCase()}:{" "}
+                      {formatQuantity(Math.abs(toNumber(m.quantity)), m.variant.unit)} de{" "}
+                      {m.variant.product.name}
                     </p>
                     <p className="text-xs text-slate-400">{formatDate(m.createdAt)}</p>
                   </li>
