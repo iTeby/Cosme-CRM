@@ -19,6 +19,13 @@ const permissions = {
   managePurchases: ["ADMIN", "COMPRAS"],
   viewPurchases: ["ADMIN", "COMPRAS", "BODEGA"],
   viewReports: ["ADMIN", "VENTAS", "BODEGA", "COMPRAS"],
+  // Producción: quien hornea no registra (los panaderos no tocan el sistema),
+  // así que manageProduction es para quien cierra el día. Las recetas las
+  // define solo Admin: cambiar una altera cuánto insumo descuenta cada
+  // producción futura.
+  viewProduction: ["ADMIN", "VENTAS", "BODEGA"],
+  manageProduction: ["ADMIN", "BODEGA"],
+  manageRecipes: ["ADMIN"],
 } satisfies Record<string, UserRole[]>;
 
 export type Permission = keyof typeof permissions;
