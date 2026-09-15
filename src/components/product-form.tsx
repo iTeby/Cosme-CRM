@@ -11,6 +11,7 @@ import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
 
 interface VariantDraft {
   sku: string;
+  barcode: string;
   attributes: string;
   price: string;
   cost: string;
@@ -21,6 +22,7 @@ interface VariantDraft {
 function emptyVariant(): VariantDraft {
   return {
     sku: "",
+    barcode: "",
     attributes: "",
     price: "0",
     cost: "0",
@@ -61,6 +63,7 @@ export function ProductForm() {
       category,
       variants: variants.map((v) => ({
         sku: v.sku,
+        barcode: v.barcode,
         attributes: v.attributes,
         price: Number(v.price) || 0,
         cost: Number(v.cost) || 0,
@@ -157,6 +160,15 @@ export function ProductForm() {
                     required
                     value={variant.sku}
                     onChange={(e) => updateVariant(index, { sku: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={`barcode-${index}`}>Código de barras</Label>
+                  <Input
+                    id={`barcode-${index}`}
+                    placeholder="El del envase. Vacío si se vende a granel."
+                    value={variant.barcode}
+                    onChange={(e) => updateVariant(index, { barcode: e.target.value })}
                   />
                 </div>
                 <div>

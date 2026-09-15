@@ -9,6 +9,9 @@ import { productCreateSchema } from "@/lib/validation";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!can(session.user.role, "viewCatalog")) {
+    return NextResponse.json({ error: "No tienes permiso para ver el catálogo" }, { status: 403 });
+  }
 
   const products = await prisma.product.findMany({
     orderBy: { createdAt: "desc" },
@@ -32,7 +35,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) {
+    return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
+  }
   const parsed = productCreateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -43,6 +49,15 @@ export async function POST(req: NextRequest) {
   if (new Set(skus).size !== skus.length) {
     return NextResponse.json(
       { error: "Hay SKU repetidos entre las variantes" },
+      { status: 400 }
+    );
+  }
+
+  // Los códigos vacíos no cuentan: varios productos a granel pueden no tener.
+  const codigos = variants.map((v) => v.barcode).filter((c): c is string => Boolean(c));
+  if (new Set(codigos).size !== codigos.length) {
+    return NextResponse.json(
+      { error: "Hay códigos de barras repetidos entre las variantes" },
       { status: 400 }
     );
   }
@@ -65,6 +80,7 @@ export async function POST(req: NextRequest) {
           variants: {
             create: variants.map((v) => ({
               sku: v.sku,
+              barcode: v.barcode || null,
               attributes: v.attributes || null,
               price: v.price,
               cost: v.cost,
@@ -95,8 +111,13 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code;
     if (code === "P2002") {
+      const campos = (err as { meta?: { target?: string[] } })?.meta?.target ?? [];
       return NextResponse.json(
-        { error: "Ya existe una variante con ese SKU" },
+        {
+          error: campos.includes("barcode")
+            ? "Ya hay otro producto con ese código de barras"
+            : "Ya existe una variante con ese SKU",
+        },
         { status: 409 }
       );
     }

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { canTransitionPurchase } from "@/lib/purchases";
 import { applyMovement } from "@/lib/inventory";
+import { recibirLote, vencimientoSugerido } from "@/lib/lots";
+import { toNumber } from "@/lib/decimal";
 import { purchaseStatusUpdateSchema } from "@/lib/validation";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -46,16 +48,46 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
       // Al marcar RECIBIDA recién ahí entra la mercadería.
       if (nextStatus === "RECIBIDA") {
+        const variantes = await tx.productVariant.findMany({
+          where: { id: { in: current.items.map((i) => i.variantId) } },
+          select: { id: true, tracksLots: true, shelfLifeDays: true },
+        });
+        const porId = new Map(variantes.map((v) => [v.id, v]));
+
         for (const item of current.items) {
-          await applyMovement(tx, {
-            variantId: item.variantId,
-            warehouseId: current.warehouseId,
-            type: "ENTRADA",
-            delta: item.quantity,
-            reason: `Recepción de compra #${current.number}`,
-            userId: session.user.id,
-            purchaseId: current.id,
-          });
+          const variante = porId.get(item.variantId);
+
+          if (variante?.tracksLots) {
+            // Lo que vence entra en un lote. El número sale de la compra y
+            // el vencimiento de la vida útil declarada: es una propuesta,
+            // no un dato del proveedor, y se corrige desde Vencimientos.
+            //
+            // Se hace así y no pidiendo lote y fecha en la orden de compra
+            // porque la alternativa era peor: sin lote, la mercadería
+            // entraba al stock pero el FEFO no la veía, y el producto no se
+            // podía vender aunque estuviera en la bodega.
+            await recibirLote(tx, {
+              variantId: item.variantId,
+              warehouseId: current.warehouseId,
+              code: `C-${current.number}`,
+              cantidad: item.quantity,
+              expiresAt: vencimientoSugerido(variante.shelfLifeDays),
+              reason: `Recepción de compra #${current.number}`,
+              userId: session.user.id,
+              purchaseId: current.id,
+              notes: "Vencimiento propuesto desde la vida útil. Corregir si el envase dice otra cosa.",
+            });
+          } else {
+            await applyMovement(tx, {
+              variantId: item.variantId,
+              warehouseId: current.warehouseId,
+              type: "ENTRADA",
+              delta: item.quantity,
+              reason: `Recepción de compra #${current.number}`,
+              userId: session.user.id,
+              purchaseId: current.id,
+            });
+          }
         }
       }
 
@@ -63,15 +95,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       // stock en negativo si parte de la mercadería ya se vendió: es una
       // corrección manual de un error, y por eso se permite explícitamente.
       if (nextStatus === "ANULADA" && current.status === "RECIBIDA") {
-        for (const item of current.items) {
+        // Se reversa contra los movimientos, no contra las líneas: así cada
+        // unidad vuelve al lote del que salió. Mismo criterio que la
+        // anulación de una venta.
+        const entradas = await tx.stockMovement.findMany({
+          where: { purchaseId: params.id, type: "ENTRADA" },
+          select: { variantId: true, warehouseId: true, quantity: true, lotId: true },
+        });
+
+        for (const entrada of entradas) {
           await applyMovement(tx, {
-            variantId: item.variantId,
-            warehouseId: current.warehouseId,
+            variantId: entrada.variantId,
+            warehouseId: entrada.warehouseId,
             type: "SALIDA",
-            delta: -item.quantity,
+            delta: -toNumber(entrada.quantity),
             reason: `Anulación de compra #${current.number}`,
             userId: session.user.id,
             purchaseId: current.id,
+            lotId: entrada.lotId,
             allowNegative: true,
           });
         }

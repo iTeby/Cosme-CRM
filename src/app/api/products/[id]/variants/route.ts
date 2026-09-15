@@ -17,12 +17,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     );
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) {
+    return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
+  }
   const parsed = variantAddSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { sku, attributes, price, cost, lowStockThreshold, initialQuantity } = parsed.data;
+  const { sku, barcode, attributes, price, cost, lowStockThreshold, initialQuantity } =
+    parsed.data;
 
   const product = await prisma.product.findUnique({ where: { id: params.id } });
   if (!product) {
@@ -43,6 +47,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         data: {
           productId: product.id,
           sku,
+          // "" a null: dos cadenas vacías chocan en el índice único, dos NULL no.
+          barcode: barcode || null,
           attributes: attributes || null,
           price,
           cost,
@@ -65,7 +71,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code;
     if (code === "P2002") {
-      return NextResponse.json({ error: "Ya existe una variante con ese SKU" }, { status: 409 });
+      const campos = (err as { meta?: { target?: string[] } })?.meta?.target ?? [];
+      return NextResponse.json(
+        {
+          error: campos.includes("barcode")
+            ? "Ya hay otro producto con ese código de barras"
+            : "Ya existe una variante con ese SKU",
+        },
+        { status: 409 }
+      );
     }
     console.error(err);
     return NextResponse.json({ error: "No se pudo crear la variante" }, { status: 500 });

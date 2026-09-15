@@ -9,7 +9,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { saleStatusLabels, saleStatusTone } from "@/lib/sales";
+import {
+  outstanding,
+  paymentStateLabels,
+  paymentStateOf,
+  paymentStateTone,
+  saleStatusLabels,
+  saleStatusTone,
+} from "@/lib/sales";
 
 export default async function SalesPage() {
   const session = await getServerSession(authOptions);
@@ -27,6 +34,8 @@ export default async function SalesPage() {
   });
 
   const canCreate = can(session.user.role, "manageSales");
+  // Bodega ve el listado para preparar entregas, pero no la caja.
+  const canViewPayments = can(session.user.role, "viewPayments");
 
   return (
     <div>
@@ -60,33 +69,61 @@ export default async function SalesPage() {
                   <Th>Cliente</Th>
                   <Th>Líneas</Th>
                   <Th>Total</Th>
+                  {canViewPayments && <Th>Abonado</Th>}
+                  {canViewPayments && <Th>Saldo</Th>}
                   <Th>Estado</Th>
+                  {canViewPayments && <Th>Pago</Th>}
                 </Tr>
               </Thead>
               <Tbody>
-                {sales.map((sale) => (
-                  <Tr key={sale.id}>
-                    <Td>
-                      <Link
-                        href={`/sales/${sale.id}`}
-                        className="font-medium text-brand-700 hover:underline"
-                      >
-                        #{sale.number}
-                      </Link>
-                    </Td>
-                    <Td className="whitespace-nowrap text-xs text-slate-500">
-                      {formatDate(sale.createdAt)}
-                    </Td>
-                    <Td>{sale.customer.name}</Td>
-                    <Td>{sale.items.length}</Td>
-                    <Td>{formatCurrency(sale.totalAmount.toString())}</Td>
-                    <Td>
-                      <Badge tone={saleStatusTone[sale.status]}>
-                        {saleStatusLabels[sale.status]}
-                      </Badge>
-                    </Td>
-                  </Tr>
-                ))}
+                {sales.map((sale) => {
+                  // outstanding() y paymentStateOf() normalizan el Decimal de
+                  // Prisma. Restar totalAmount - paidAmount acá concatenaría
+                  // strings en silencio: valueOf() de un Decimal es string.
+                  const saldo = outstanding(sale.totalAmount, sale.paidAmount);
+                  const estadoPago = paymentStateOf(sale.totalAmount, sale.paidAmount);
+                  const anulada = sale.status === "ANULADA";
+                  return (
+                    <Tr key={sale.id}>
+                      <Td>
+                        <Link
+                          href={`/sales/${sale.id}`}
+                          className="font-medium text-brand-700 hover:underline"
+                        >
+                          #{sale.number}
+                        </Link>
+                      </Td>
+                      <Td className="whitespace-nowrap text-xs text-slate-500">
+                        {formatDate(sale.createdAt)}
+                      </Td>
+                      <Td>{sale.customer.name}</Td>
+                      <Td>{sale.items.length}</Td>
+                      <Td>{formatCurrency(sale.totalAmount.toString())}</Td>
+                      {canViewPayments && <Td>{formatCurrency(sale.paidAmount.toString())}</Td>}
+                      {canViewPayments && (
+                        <Td className={saldo > 0 && !anulada ? "font-medium text-red-700" : ""}>
+                          {anulada ? "—" : formatCurrency(saldo)}
+                        </Td>
+                      )}
+                      <Td>
+                        <Badge tone={saleStatusTone[sale.status]}>
+                          {saleStatusLabels[sale.status]}
+                        </Badge>
+                      </Td>
+                      {canViewPayments && (
+                        <Td>
+                          {anulada ? (
+                            <span className="text-xs text-slate-400">—</span>
+                          ) : (
+                            <Badge tone={paymentStateTone[estadoPago]}>
+                              {paymentStateLabels[estadoPago]}
+                            </Badge>
+                          )}
+                        </Td>
+                      )}
+                    </Tr>
+                  );
+                })}
               </Tbody>
             </Table>
           )}

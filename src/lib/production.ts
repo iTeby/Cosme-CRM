@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { round3, toNumber, type Numeric } from "./decimal";
 import { applyMovement, InsufficientStockError } from "./inventory";
+import { consumirFefo, recibirLote, vencimientoSugerido } from "./lots";
 
 // Producción: la parte del negocio que el CRM no modelaba.
 //
@@ -163,15 +164,20 @@ export async function applyProduction(tx: Tx, input: ApplyProductionInput) {
     recipes.map((r) => [r.variantId, new Set(r.items.map((i) => i.variantId))])
   );
 
-  // Los SKU de todos los insumos de una vez, para los mensajes de error.
+  // Los SKU de todos los insumos de una vez, para los mensajes de error, y
+  // de paso la configuración de lotes de todo lo que se va a tocar: insumos
+  // y productos horneados. Una consulta en vez de una por línea.
   const inputIds = [...new Set(recipes.flatMap((r) => r.items.map((i) => i.variantId)))];
-  const inputVariants = inputIds.length
+  const tocados = [...new Set([...inputIds, ...items.map((i) => i.variantId)])];
+  const variantesTocadas = tocados.length
     ? await tx.productVariant.findMany({
-        where: { id: { in: inputIds } },
-        select: { id: true, sku: true },
+        where: { id: { in: tocados } },
+        select: { id: true, sku: true, tracksLots: true, shelfLifeDays: true },
       })
     : [];
-  const skuById = new Map(inputVariants.map((v) => [v.id, v.sku]));
+  const skuById = new Map(variantesTocadas.map((v) => [v.id, v.sku]));
+  const tracksLotsById = new Map(variantesTocadas.map((v) => [v.id, v.tracksLots]));
+  const shelfLifeById = new Map(variantesTocadas.map((v) => [v.id, v.shelfLifeDays]));
 
   const order = await tx.productionOrder.create({
     data: {
@@ -181,6 +187,12 @@ export async function applyProduction(tx: Tx, input: ApplyProductionInput) {
       notes: notes || null,
     },
   });
+
+  // El lote de cada cosa horneada, para que la merma salga de la hornada de
+  // hoy y no de la de ayer. El código lleva el número de la orden, así que
+  // la trazabilidad va en los dos sentidos: del lote a la producción y de la
+  // producción al lote.
+  const lotesPorVariante = new Map<string, string>();
 
   for (const item of orderByDependency(items, inputsOf)) {
     const produced = round3(item.quantityProduced);
@@ -205,35 +217,75 @@ export async function applyProduction(tx: Tx, input: ApplyProductionInput) {
         // antes que en el sistema. Si empieza a importar, la receta necesita
         // más precisión que las tres décimas que guarda la base.
         if (ingredient.quantity === 0) continue;
-        await applyMovement(tx, {
-          variantId: ingredient.variantId,
-          warehouseId,
-          type: "CONSUMO",
-          delta: -ingredient.quantity,
-          reason: `Producción #${order.number}`,
-          userId,
-          productionId: order.id,
-          sku: skuById.get(ingredient.variantId),
-        });
+
+        // Un insumo que vence —la levadura, la leche— se consume por FEFO:
+        // sale primero el que vence antes. El resto, de una.
+        if (tracksLotsById.get(ingredient.variantId)) {
+          await consumirFefo(tx, {
+            variantId: ingredient.variantId,
+            warehouseId,
+            cantidad: ingredient.quantity,
+            type: "CONSUMO",
+            reason: `Producción #${order.number}`,
+            userId,
+            productionId: order.id,
+            sku: skuById.get(ingredient.variantId),
+          });
+        } else {
+          await applyMovement(tx, {
+            variantId: ingredient.variantId,
+            warehouseId,
+            type: "CONSUMO",
+            delta: -ingredient.quantity,
+            reason: `Producción #${order.number}`,
+            userId,
+            productionId: order.id,
+            sku: skuById.get(ingredient.variantId),
+          });
+        }
       }
     }
 
     // 2. Lo producido
     if (produced > 0) {
-      await applyMovement(tx, {
-        variantId: item.variantId,
-        warehouseId,
-        type: "PRODUCCION",
-        delta: produced,
-        reason: `Producción #${order.number}`,
-        userId,
-        productionId: order.id,
-      });
+      if (tracksLotsById.get(item.variantId)) {
+        // El pan nace en un lote. Es lo que vence primero de todo el
+        // almacén, así que sin lote el FEFO no tendría de dónde despachar y
+        // la primera venta del día fallaría con el pan sobre el mesón.
+        const { lote } = await recibirLote(tx, {
+          variantId: item.variantId,
+          warehouseId,
+          code: `P-${order.number}`,
+          cantidad: produced,
+          expiresAt: vencimientoSugerido(
+            shelfLifeById.get(item.variantId) ?? null,
+            order.producedOn ?? new Date()
+          ),
+          type: "PRODUCCION",
+          reason: `Producción #${order.number}`,
+          userId,
+          productionId: order.id,
+        });
+        lotesPorVariante.set(item.variantId, lote.id);
+      } else {
+        await applyMovement(tx, {
+          variantId: item.variantId,
+          warehouseId,
+          type: "PRODUCCION",
+          delta: produced,
+          reason: `Producción #${order.number}`,
+          userId,
+          productionId: order.id,
+        });
+      }
     }
 
     // 3. La merma, después de producir
     if (wasted > 0) {
       try {
+        // La merma sale del lote recién horneado, no del más antiguo: lo
+        // que se quemó es de esta hornada. Por eso va contra el lote y no
+        // por FEFO.
         await applyMovement(tx, {
           variantId: item.variantId,
           warehouseId,
@@ -242,6 +294,7 @@ export async function applyProduction(tx: Tx, input: ApplyProductionInput) {
           reason: `Merma de producción #${order.number}`,
           userId,
           productionId: order.id,
+          lotId: lotesPorVariante.get(item.variantId) ?? null,
         });
       } catch (err) {
         // Se traduce el error: acá no falta ningún insumo, sobra merma. Decir

@@ -1,0 +1,11 @@
+-- Rol CAJERO.
+--
+-- En un almacén de barrio no hay "bodega" ni "compras": hay quien atiende el
+-- mostrador y quien es dueña del negocio. BODEGA y COMPRAS se quedan porque
+-- sí existen en el rubro para el que se construyó esto primero; el almacén
+-- simplemente no los asigna.
+--
+-- AFTER 'VENTAS' y no al final: el orden del enum en la base tiene que
+-- coincidir con el del schema, o la próxima `prisma migrate dev` detecta
+-- deriva y genera una migración correctiva por un cambio que no existe.
+ALTER TYPE "UserRole" ADD VALUE 'CAJERO' AFTER 'VENTAS';

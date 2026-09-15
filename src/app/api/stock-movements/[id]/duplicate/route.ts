@@ -34,6 +34,10 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
         delta: source.quantity,
         reason: source.reason,
         userId: session.user.id,
+        // El duplicado va al mismo lote que el original: sin esto, duplicar
+        // un movimiento de un producto con lotes movía el nivel y dejaba el
+        // lote atrás.
+        lotId: source.lotId,
       });
 
       return movement;

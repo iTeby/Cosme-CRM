@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
 import { manualMovementTypes } from "@/lib/movements";
+import { paymentMethods } from "@/lib/payments";
 
 // Toda cantidad y todo monto pasa por acá. Sin .finite() y sin tope, zod acepta
 // "1e30" e "Infinity": el primero llega a Postgres y revienta con un overflow
@@ -16,6 +17,13 @@ const cantidadPositiva = (mensaje: string) =>
 const cantidadNoNegativa = (mensaje: string) =>
   z.coerce.number().finite("Cantidad inválida").min(0, mensaje).max(MAX_CANTIDAD, "Cantidad demasiado grande");
 
+const montoPositivo = (mensaje: string) =>
+  z.coerce
+    .number()
+    .finite("Monto inválido")
+    .positive(mensaje)
+    .max(9_999_999_999, "Monto demasiado grande");
+
 const monto = (mensaje: string) =>
   z.coerce.number().finite("Valor inválido").min(0, mensaje).max(9_999_999_999, "Valor demasiado grande");
 
@@ -27,8 +35,36 @@ const categorySchema = z
   .optional()
   .or(z.literal(""));
 
+// El código impreso en el envase, el que lee la pistola. No es el SKU.
+// Se acepta vacío (mucho producto de almacén se vende a granel y no tiene
+// código); quien escriba debe convertir "" en null, porque dos cadenas vacías
+// sí colisionan en el índice único y dos NULL no.
+// Los plazos de vencimiento son días enteros y opcionales: no hay un número
+// correcto para todo el almacén, así que no se inventa uno por defecto.
+const diasOpcionales = (mensaje: string) =>
+  z.coerce
+    .number()
+    .int(mensaje)
+    .min(1, mensaje)
+    .max(3650, "El plazo es demasiado largo")
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .or(z.null().transform(() => undefined));
+
+const barcodeSchema = z
+  .string()
+  .trim()
+  .max(32, "El código de barras es muy largo")
+  .regex(/^[A-Za-z0-9._-]*$/, "El código de barras solo admite letras, números, punto y guion")
+  .optional()
+  .or(z.literal(""));
+
 export const variantInputSchema = z.object({
   sku: z.string().trim().min(2, "SKU muy corto").max(60),
+  barcode: barcodeSchema,
+  tracksLots: z.boolean().optional(),
+  shelfLifeDays: diasOpcionales("La vida útil debe ser un número de días"),
+  nearExpiryDays: diasOpcionales("El aviso debe ser un número de días"),
   unit: z.string().trim().min(1).max(8).default("UN"),
   attributes: z.string().trim().max(200).optional().or(z.literal("")),
   price: monto("El precio no puede ser negativo"),
@@ -53,6 +89,10 @@ export const productUpdateSchema = z.object({
 
 export const variantUpdateSchema = z.object({
   sku: z.string().trim().min(2, "SKU muy corto").max(60),
+  barcode: barcodeSchema,
+  tracksLots: z.boolean().optional(),
+  shelfLifeDays: diasOpcionales("La vida útil debe ser un número de días"),
+  nearExpiryDays: diasOpcionales("El aviso debe ser un número de días"),
   unit: z.string().trim().min(1).max(8).default("UN"),
   attributes: z.string().trim().max(200).optional().or(z.literal("")),
   price: monto("El precio no puede ser negativo"),
@@ -67,12 +107,12 @@ export const userCreateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
   email: z.string().trim().toLowerCase().email("Correo inválido"),
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(72),
-  role: z.enum(["ADMIN", "VENTAS", "BODEGA", "COMPRAS"]),
+  role: z.enum(["ADMIN", "VENTAS", "CAJERO", "BODEGA", "COMPRAS"]),
 });
 
 export const userUpdateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
-  role: z.enum(["ADMIN", "VENTAS", "BODEGA", "COMPRAS"]),
+  role: z.enum(["ADMIN", "VENTAS", "CAJERO", "BODEGA", "COMPRAS"]),
   active: z.boolean(),
   password: z
     .string()
@@ -108,7 +148,7 @@ export const saleCreateSchema = z.object({
 });
 
 export const saleStatusUpdateSchema = z.object({
-  status: z.enum(["PENDIENTE", "PAGADA", "ENTREGADA", "ANULADA"]),
+  status: z.enum(["PENDIENTE", "ENTREGADA", "ANULADA"]),
 });
 
 export const supplierCreateSchema = z.object({
@@ -171,6 +211,24 @@ export function primerMensaje(error: z.ZodError): string {
   const deCampo = Object.values(flat.fieldErrors).flat().find(Boolean);
   return flat.formErrors[0] ?? deCampo ?? "Los datos enviados no son válidos";
 }
+
+// --- Pagos y fiado ---
+
+export const paymentCreateSchema = z
+  .object({
+    // Uno de los dos, nunca los dos: o se abona a una venta concreta, o se
+    // deja plata a cuenta y el sistema la reparte de la más antigua a la más
+    // nueva.
+    saleId: z.string().min(1).optional(),
+    customerId: z.string().min(1).optional(),
+    amount: montoPositivo("El monto debe ser mayor que 0"),
+    method: z.enum(paymentMethods),
+    notes: z.string().trim().max(300, "La nota es muy larga").optional().or(z.literal("")),
+  })
+  .refine((p) => Boolean(p.saleId) !== Boolean(p.customerId), {
+    message: "Indica una venta o un cliente, no ambos",
+    path: ["saleId"],
+  });
 
 // --- Recetas y producción ---
 
@@ -245,4 +303,42 @@ export const stockMovementUpdateSchema = z.object({
     .min(-MAX_CANTIDAD, "Cantidad demasiado grande")
     .refine((n) => n !== 0, "La cantidad no puede ser 0"),
   reason: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+// --- Caja y turno ---
+
+export const shiftOpenSchema = z.object({
+  // El fondo puede ser 0: hay almacenes que parten el día con el cajón vacío.
+  openingAmount: monto("El fondo no puede ser negativo"),
+  warehouseId: z.string().min(1).optional(),
+  notes: z.string().trim().max(300, "La nota es muy larga").optional().or(z.literal("")),
+});
+
+export const shiftCloseSchema = z.object({
+  // Lo contado a mano. Cero es una respuesta válida y a veces la correcta.
+  countedAmount: monto("El monto contado no puede ser negativo"),
+  notes: z.string().trim().max(500, "La nota es muy larga").optional().or(z.literal("")),
+});
+
+// --- Lotes y vencimiento ---
+
+export const lotReceiveSchema = z.object({
+  variantId: z.string().min(1, "Selecciona un producto"),
+  warehouseId: z.string().min(1).optional(),
+  code: z.string().trim().min(1, "El lote necesita un número").max(60),
+  quantity: cantidadPositiva("La cantidad debe ser mayor que 0"),
+  // Fecha o vacío: hay productos con lote y sin vencimiento, como una
+  // partida de envases que se rastrea por proveedor.
+  expiresAt: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida")
+    .optional()
+    .or(z.literal("")),
+  notes: z.string().trim().max(300).optional().or(z.literal("")),
+});
+
+export const lotStatusSchema = z.object({
+  status: z.enum(["DISPONIBLE", "BLOQUEADO", "VENCIDO"]),
+  notes: z.string().trim().max(300).optional().or(z.literal("")),
 });

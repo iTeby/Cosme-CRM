@@ -338,3 +338,103 @@ describe("applyProduction", () => {
     expect(tx.levelFor(HARINA, W)).toBe(25);
   });
 });
+
+describe("la hornada nace en un lote", () => {
+  // Es el escenario del rubro: sin esto, la producción de la mañana creaba
+  // 200 panes que el FEFO no veía, y la primera venta del día se rechazaba
+  // con el pan sobre el mesón.
+
+  beforeEach(() => {
+    tx.seedVariant(PAN, { tracksLots: true, shelfLifeDays: 2 });
+    tx.seedRecipe(PAN, 200, [
+      [HARINA, 12.5],
+      [LEVADURA, 0.25],
+    ]);
+  });
+
+  it("lo horneado queda en un lote con su vencimiento", async () => {
+    await seedInsumos();
+
+    await applyProduction(asTx(), {
+      warehouseId: W,
+      userId: USER,
+      producedOn: new Date("2026-09-11T15:00:00Z"),
+      items: [{ variantId: PAN, quantityProduced: 200 }],
+    });
+
+    expect(tx.lots).toHaveLength(1);
+    const lote = tx.lots[0];
+    expect(lote.variantId).toBe(PAN);
+    expect(lote.quantity).toBe(200);
+    // El código lleva el número de la orden: la trazabilidad va en los dos
+    // sentidos, del lote a la producción y de la producción al lote.
+    expect(lote.code).toBe("P-1");
+    expect(lote.expiresAt?.toISOString().slice(0, 10)).toBe("2026-09-13");
+
+    // Y el lote es la suma de sus movimientos desde el primer día.
+    expect(lote.quantity).toBe(tx.lotSumFor(lote.id));
+    expect(tx.levelFor(PAN, W)).toBe(200);
+  });
+
+  it("la merma sale de la hornada de hoy, no de la de ayer", async () => {
+    // Lo que se quemó es de esta tanda. Descontarlo del lote más antiguo
+    // dejaría el pan viejo cuadrado y el nuevo con más de lo que hay.
+    tx.seedLot("l-ayer", PAN, W, 30, {
+      code: "P-0",
+      expiresAt: new Date("2026-09-12T00:00:00Z"),
+    });
+    await seedInsumos();
+
+    await applyProduction(asTx(), {
+      warehouseId: W,
+      userId: USER,
+      producedOn: new Date("2026-09-11T15:00:00Z"),
+      items: [{ variantId: PAN, quantityProduced: 200, quantityWasted: 12 }],
+    });
+
+    const hoy = tx.lots.find((l) => l.code === "P-1")!;
+    expect(hoy.quantity).toBe(188);
+    expect(tx.lotById("l-ayer").quantity).toBe(30);
+  });
+
+  it("un insumo que vence se consume por FEFO", async () => {
+    // La levadura vence. Sale primero la que vence antes, no la que llegó
+    // antes.
+    tx.seedVariant(LEVADURA, { tracksLots: true });
+    tx.seedLot("lev-vieja", LEVADURA, W, 1, {
+      expiresAt: new Date("2026-09-30T00:00:00Z"),
+      receivedAt: new Date("2026-09-01T00:00:00Z"),
+    });
+    tx.seedLot("lev-urgente", LEVADURA, W, 1, {
+      expiresAt: new Date("2026-09-14T00:00:00Z"),
+      receivedAt: new Date("2026-09-10T00:00:00Z"),
+    });
+    tx.levels.set(`${HARINA}:${W}`, 25);
+
+    await applyProduction(asTx(), {
+      warehouseId: W,
+      userId: USER,
+      producedOn: new Date("2026-09-11T15:00:00Z"),
+      items: [{ variantId: PAN, quantityProduced: 200 }],
+    });
+
+    // 0,25 kg de levadura salen del lote que vence el 14, no del que llegó
+    // primero pero vence el 30.
+    expect(tx.lotById("lev-urgente").quantity).toBe(0.75);
+    expect(tx.lotById("lev-vieja").quantity).toBe(1);
+  });
+
+  it("un producto sin lotes se hornea como siempre", async () => {
+    tx.seedVariant(PAN, { tracksLots: false });
+    await seedInsumos();
+
+    await applyProduction(asTx(), {
+      warehouseId: W,
+      userId: USER,
+      items: [{ variantId: PAN, quantityProduced: 200 }],
+    });
+
+    expect(tx.lots).toHaveLength(0);
+    expect(tx.levelFor(PAN, W)).toBe(200);
+  });
+});

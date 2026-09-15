@@ -31,6 +31,30 @@ export class InsufficientStockError extends Error {
 }
 
 /**
+ * Se movió stock de un producto que se maneja por lotes sin decir de qué
+ * lote.
+ *
+ * Existe porque la invariante del lote no puede ser una convención. Mientras
+ * `lotId` fue opcional y nadie lo exigía, seis caminos distintos movían
+ * stock sin tocar ningún lote: la producción del día creaba 200 panes, la
+ * primera venta llamaba al FEFO, no encontraba ni un lote y rechazaba la
+ * venta con el pan sobre el mesón. Peor todavía, una compra recibida sin
+ * lote dejaba el nivel en 50 y la suma de los lotes en 0, y nadie se
+ * enteraba.
+ *
+ * Fallar acá convierte ese desajuste silencioso en un error visible en el
+ * momento exacto en que se produce.
+ */
+export class LotRequiredError extends Error {
+  readonly sku?: string;
+  constructor(sku?: string) {
+    super(sku ? `LOT_REQUIRED:${sku}` : "LOT_REQUIRED");
+    this.name = "LotRequiredError";
+    this.sku = sku;
+  }
+}
+
+/**
  * Tabla de signos de los seis tipos de movimiento. Cambiar acá cambia el
  * comportamiento en todo el sistema: no hay otra tabla en ningún otro archivo.
  *
@@ -95,6 +119,24 @@ async function incrementLevel(
   return round3(level.quantity);
 }
 
+/**
+ * Suma un delta al snapshot de un lote y devuelve el resultado.
+ *
+ * Mismo razonamiento que incrementLevel: la suma la hace Postgres. Y acá
+ * importa todavía más, porque el lote es lo que dos cajas se pelean cuando
+ * queda poca mercadería de la tanda que vence primero. Con `increment` el
+ * UPDATE toma el lock de la fila del lote y las dos ventas se serializan; la
+ * que llega segunda ve el resultado real y, si quedó bajo cero, revierte.
+ */
+async function incrementLot(tx: Tx, lotId: string, delta: number): Promise<number> {
+  const lot = await tx.lot.update({
+    where: { id: lotId },
+    data: { quantity: { increment: delta } },
+    select: { quantity: true },
+  });
+  return round3(lot.quantity);
+}
+
 /** Deja el snapshot en un valor absoluto. Solo para conteos y carga inicial. */
 async function setLevel(
   tx: Tx,
@@ -111,6 +153,27 @@ async function setLevel(
 
 function guard(nextQuantity: number, allowNegative: boolean, sku?: string): void {
   if (nextQuantity < 0 && !allowNegative) throw new InsufficientStockError(sku);
+}
+
+/**
+ * Si la variante se maneja por lotes, exige saber cuál.
+ *
+ * Es una consulta más por movimiento, y vale la pena: es lo único que impide
+ * que un camino nuevo vuelva a abrir el agujero por el que el nivel total y
+ * la suma de los lotes se separan sin que nadie lo note.
+ */
+async function exigirLote(
+  tx: Tx,
+  variantId: string,
+  lotId: string | null | undefined,
+  sku?: string
+): Promise<void> {
+  if (lotId) return;
+  const variante = await tx.productVariant.findUnique({
+    where: { id: variantId },
+    select: { tracksLots: true, sku: true },
+  });
+  if (variante?.tracksLots) throw new LotRequiredError(sku ?? variante.sku);
 }
 
 export type ApplyMovementInput = {
@@ -132,6 +195,12 @@ export type ApplyMovementInput = {
   allowNegative?: boolean;
   /** SKU para el mensaje de error cuando el llamador ya lo tiene a mano. */
   sku?: string;
+  /**
+   * Lote al que se imputa el movimiento, para los productos que los llevan.
+   * Su snapshot se mantiene acá mismo y con la misma disciplina que el nivel
+   * de stock: si el lote queda negativo, revierte todo.
+   */
+  lotId?: string | null;
 };
 
 /** Registra un movimiento nuevo y deja el snapshot al día. */
@@ -148,6 +217,7 @@ export async function applyMovement(tx: Tx, input: ApplyMovementInput) {
     productionId,
     allowNegative = false,
     sku,
+    lotId,
   } = input;
 
   // Se redondea a las tres décimas que guarda la base antes de operar: si no,
@@ -155,11 +225,22 @@ export async function applyMovement(tx: Tx, input: ApplyMovementInput) {
   // suma del historial.
   const delta = round3(rawDelta);
 
+  await exigirLote(tx, variantId, lotId, sku);
+
   // El nivel se suma primero y de forma atómica; si el resultado quedó bajo
   // cero se lanza y la transacción revierte todo, incluido este incremento.
   // Validar antes de escribir sería volver al read-modify-write inseguro.
   const nextQuantity = await incrementLevel(tx, variantId, warehouseId, delta);
   guard(nextQuantity, allowNegative, sku);
+
+  // El lote se mueve en la misma transacción y con la misma guarda. Que los
+  // dos snapshots —nivel y lote— se actualicen juntos o no se actualice
+  // ninguno es lo que impide que el stock total diga una cosa y la suma de
+  // los lotes diga otra.
+  if (lotId) {
+    const nextLotQuantity = await incrementLot(tx, lotId, delta);
+    guard(nextLotQuantity, allowNegative, sku);
+  }
 
   const movement = await tx.stockMovement.create({
     data: {
@@ -172,6 +253,7 @@ export async function applyMovement(tx: Tx, input: ApplyMovementInput) {
       saleId: saleId ?? null,
       purchaseId: purchaseId ?? null,
       productionId: productionId ?? null,
+      lotId: lotId ?? null,
     },
     include: {
       variant: { include: { product: true } },
@@ -190,17 +272,28 @@ export async function applyMovement(tx: Tx, input: ApplyMovementInput) {
  */
 export async function replaceMovement(
   tx: Tx,
-  current: { id: string; variantId: string; warehouseId: string; quantity: Numeric },
+  current: {
+    id: string;
+    variantId: string;
+    warehouseId: string;
+    quantity: Numeric;
+    lotId?: string | null;
+  },
   next: { type: MovementType; delta: Numeric; reason?: string | null }
 ) {
   const delta = round3(next.delta);
+  const diferencia = round3(delta - toNumber(current.quantity));
   const nextQuantity = await incrementLevel(
     tx,
     current.variantId,
     current.warehouseId,
-    round3(delta - toNumber(current.quantity))
+    diferencia
   );
   guard(nextQuantity, false);
+
+  if (current.lotId) {
+    guard(await incrementLot(tx, current.lotId, diferencia), false);
+  }
 
   return tx.stockMovement.update({
     where: { id: current.id },
@@ -216,15 +309,26 @@ export async function replaceMovement(
 /** Elimina un movimiento manual y descuenta su efecto del snapshot. */
 export async function removeMovement(
   tx: Tx,
-  current: { id: string; variantId: string; warehouseId: string; quantity: Numeric }
+  current: {
+    id: string;
+    variantId: string;
+    warehouseId: string;
+    quantity: Numeric;
+    lotId?: string | null;
+  }
 ): Promise<void> {
+  const reversa = round3(-toNumber(current.quantity));
   const nextQuantity = await incrementLevel(
     tx,
     current.variantId,
     current.warehouseId,
-    round3(-toNumber(current.quantity))
+    reversa
   );
   guard(nextQuantity, false);
+
+  if (current.lotId) {
+    guard(await incrementLot(tx, current.lotId, reversa), false);
+  }
 
   await tx.stockMovement.delete({ where: { id: current.id } });
 }
@@ -254,6 +358,11 @@ export async function setStockAbsolute(tx: Tx, input: SetStockInput): Promise<nu
   // Un conteo físico no puede dejar el stock negativo: eso sería un error de
   // digitación, no un hallazgo.
   guard(quantity, false);
+
+  // Un absoluto no sabe repartirse entre lotes, así que un producto con
+  // lotes no se carga por acá: se recibe lote por lote. Es la carga inicial
+  // y el importador masivo los que llegan hasta acá.
+  await exigirLote(tx, variantId, null);
 
   // El nivel se lee recién acá, nunca desde una caché del llamador. Antes esta
   // función aceptaba un stock prefetcheado, y el importador masivo se lo pasaba

@@ -22,7 +22,7 @@ interface UserRow {
   createdAt: string;
 }
 
-const roles: UserRole[] = ["ADMIN", "VENTAS", "BODEGA", "COMPRAS"];
+const roles: UserRole[] = ["ADMIN", "VENTAS", "CAJERO", "BODEGA", "COMPRAS"];
 
 export function UserManagement({
   users,

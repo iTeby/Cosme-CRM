@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
@@ -9,7 +10,10 @@ import { ProductsList } from "@/components/products-list";
 
 export default async function ProductsPage() {
   const session = await getServerSession(authOptions);
-  if (!session) return null;
+  if (!session) redirect("/login");
+  if (!can(session.user.role, "viewCatalog")) {
+    redirect("/dashboard");
+  }
 
   const products = await prisma.product.findMany({
     orderBy: { createdAt: "desc" },

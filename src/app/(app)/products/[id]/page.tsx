@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +7,10 @@ import { ProductDetail } from "@/components/product-detail";
 
 export default async function ProductDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  if (!session) return null;
+  if (!session) redirect("/login");
+  if (!can(session.user.role, "viewCatalog")) {
+    redirect("/dashboard");
+  }
 
   const product = await prisma.product.findUnique({
     where: { id: params.id },
@@ -25,6 +28,7 @@ export default async function ProductDetailPage({ params }: { params: { id: stri
     <ProductDetail
       product={JSON.parse(JSON.stringify(product))}
       canManage={can(session.user.role, "manageProducts")}
+      canViewCost={can(session.user.role, "viewCost")}
     />
   );
 }

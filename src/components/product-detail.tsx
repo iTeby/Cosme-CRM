@@ -23,6 +23,10 @@ interface StockLevel {
 interface Variant {
   id: string;
   sku: string;
+  barcode: string | null;
+  tracksLots: boolean;
+  shelfLifeDays: number | null;
+  nearExpiryDays: number | null;
   attributes: string | null;
   price: string;
   cost: string;
@@ -43,9 +47,12 @@ interface ProductData {
 export function ProductDetail({
   product,
   canManage,
+  canViewCost,
 }: {
   product: ProductData;
   canManage: boolean;
+  /** El costo de compra es el margen del negocio: no lo ve cualquiera. */
+  canViewCost: boolean;
 }) {
   const router = useRouter();
 
@@ -74,9 +81,10 @@ export function ProductDetail({
             <Thead>
               <Tr>
                 <Th>SKU</Th>
+                <Th>Código de barras</Th>
                 <Th>Atributos</Th>
                 <Th>Precio</Th>
-                <Th>Costo</Th>
+                {canViewCost && <Th>Costo</Th>}
                 <Th>Stock</Th>
                 <Th>Umbral</Th>
                 <Th>Estado</Th>
@@ -89,6 +97,7 @@ export function ProductDetail({
                   key={variant.id}
                   variant={variant}
                   canManage={canManage}
+                  canViewCost={canViewCost}
                   onSaved={() => router.refresh()}
                 />
               ))}
@@ -228,14 +237,24 @@ function ProductFields({
 function VariantRow({
   variant,
   canManage,
+  canViewCost,
   onSaved,
 }: {
   variant: Variant;
   canManage: boolean;
+  canViewCost: boolean;
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [sku, setSku] = useState(variant.sku);
+  const [barcode, setBarcode] = useState(variant.barcode ?? "");
+  const [tracksLots, setTracksLots] = useState(variant.tracksLots);
+  const [shelfLifeDays, setShelfLifeDays] = useState(
+    variant.shelfLifeDays === null ? "" : String(variant.shelfLifeDays)
+  );
+  const [nearExpiryDays, setNearExpiryDays] = useState(
+    variant.nearExpiryDays === null ? "" : String(variant.nearExpiryDays)
+  );
   const [attributes, setAttributes] = useState(variant.attributes ?? "");
   const [price, setPrice] = useState(variant.price);
   const [cost, setCost] = useState(variant.cost);
@@ -255,11 +274,15 @@ function VariantRow({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sku,
+        barcode,
         attributes,
         price: Number(price) || 0,
         cost: Number(cost) || 0,
         lowStockThreshold: Number(threshold) || 0,
         active,
+        tracksLots,
+        shelfLifeDays: shelfLifeDays === "" ? undefined : Number(shelfLifeDays),
+        nearExpiryDays: nearExpiryDays === "" ? undefined : Number(nearExpiryDays),
       }),
     });
     setLoading(false);
@@ -277,9 +300,16 @@ function VariantRow({
   if (editing) {
     return (
       <Tr>
-        <Td colSpan={canManage ? 8 : 7}>
-          <div className="grid grid-cols-6 gap-2 py-1">
+        {/* SKU, código, atributos, precio, stock, umbral y estado son 7; el
+            costo y la columna de acciones se suman solo si corresponden. */}
+        <Td colSpan={7 + (canViewCost ? 1 : 0) + (canManage ? 1 : 0)}>
+          <div className="grid grid-cols-7 gap-2 py-1">
             <Input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="SKU" />
+            <Input
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder="Cód. barras"
+            />
             <Input
               value={attributes}
               onChange={(e) => setAttributes(e.target.value)}
@@ -313,6 +343,48 @@ function VariantRow({
               <span className="text-xs text-slate-500">Activa</span>
             </div>
           </div>
+          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={tracksLots}
+                onChange={(e) => setTracksLots(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Se maneja por lotes y vence
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              Actívalo solo en lo que se pierde: pan, lácteos, fiambres. Con esto, cada venta
+              despacha primero la tanda que vence antes. Obligar a elegir lote para vender arroz
+              haría la caja impracticable.
+            </p>
+            {tracksLots && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor={`vida-${variant.id}`}>Vida útil (días)</Label>
+                  <Input
+                    id={`vida-${variant.id}`}
+                    type="number"
+                    min="1"
+                    value={shelfLifeDays}
+                    onChange={(e) => setShelfLifeDays(e.target.value)}
+                    placeholder="Propone el vencimiento al recibir"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={`aviso-${variant.id}`}>Avisar con (días)</Label>
+                  <Input
+                    id={`aviso-${variant.id}`}
+                    type="number"
+                    min="1"
+                    value={nearExpiryDays}
+                    onChange={(e) => setNearExpiryDays(e.target.value)}
+                    placeholder="Vacío usa 7"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
           {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
           <div className="mt-2 flex gap-2">
             <Button type="button" variant="secondary" onClick={() => setEditing(false)}>
@@ -329,10 +401,18 @@ function VariantRow({
 
   return (
     <Tr>
-      <Td className="font-mono text-xs">{variant.sku}</Td>
+      <Td className="font-mono text-xs">
+        {variant.sku}
+        {variant.tracksLots && (
+          <Badge tone="neutral" className="ml-2">
+            Por lotes
+          </Badge>
+        )}
+      </Td>
+      <Td className="font-mono text-xs text-slate-500">{variant.barcode || "—"}</Td>
       <Td>{variant.attributes || "—"}</Td>
       <Td>{formatCurrency(variant.price)}</Td>
-      <Td>{formatCurrency(variant.cost)}</Td>
+      {canViewCost && <Td>{formatCurrency(variant.cost)}</Td>}
       <Td>
         <span className={lowStock ? "font-medium text-amber-700" : ""}>
           {formatNumber(totalStock)}
@@ -372,6 +452,7 @@ function AddVariantForm({
 }) {
   const [open, setOpen] = useState(false);
   const [sku, setSku] = useState("");
+  const [barcode, setBarcode] = useState("");
   const [attributes, setAttributes] = useState("");
   const [price, setPrice] = useState("0");
   const [cost, setCost] = useState("0");
@@ -390,6 +471,7 @@ function AddVariantForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sku,
+        barcode,
         attributes,
         price: Number(price) || 0,
         cost: Number(cost) || 0,
@@ -407,6 +489,7 @@ function AddVariantForm({
     }
 
     setSku("");
+    setBarcode("");
     setAttributes("");
     setPrice("0");
     setCost("0");
@@ -435,6 +518,15 @@ function AddVariantForm({
             <div>
               <Label htmlFor="new-sku">SKU</Label>
               <Input id="new-sku" required value={sku} onChange={(e) => setSku(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="new-barcode">Código de barras</Label>
+              <Input
+                id="new-barcode"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder="Opcional"
+              />
             </div>
             <div>
               <Label htmlFor="new-attrs">Atributos</Label>

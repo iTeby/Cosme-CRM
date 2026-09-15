@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
@@ -6,7 +7,10 @@ import { InventoryClient } from "@/components/inventory-client";
 
 export default async function InventoryPage() {
   const session = await getServerSession(authOptions);
-  if (!session) return null;
+  if (!session) redirect("/login");
+  if (!can(session.user.role, "viewCatalog")) {
+    redirect("/dashboard");
+  }
 
   const [variants, warehouses, movements] = await Promise.all([
     prisma.productVariant.findMany({

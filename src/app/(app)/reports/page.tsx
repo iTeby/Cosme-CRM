@@ -10,12 +10,18 @@ import { toNumber } from "@/lib/decimal";
 // Todas las consultas de esta página son de solo lectura y se calculan al
 // vuelo desde las tablas existentes (Sale, StockMovement, StockLevel) — no
 // se guarda ningún dato nuevo, así que no hay migración asociada.
-const STATUS_ORDER: SaleStatus[] = ["PENDIENTE", "PAGADA", "ENTREGADA", "ANULADA"];
+const STATUS_ORDER: SaleStatus[] = ["PENDIENTE", "ENTREGADA", "ANULADA"];
 
 export default async function ReportsPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
-  if (!can(session.user.role, "viewReports")) {
+  // Dos permisos, no uno: cuánto se vendió es plata y no es de todos; cómo
+  // está el stock es operación y sí le sirve a quien mueve mercadería. Las
+  // consultas de ventas ni siquiera se ejecutan si no se pueden mostrar, así
+  // que la facturación no viaja al navegador de quien no debe verla.
+  const verVentas = can(session.user.role, "viewSalesReports");
+  const verStock = can(session.user.role, "viewStockReports");
+  if (!verVentas && !verStock) {
     redirect("/dashboard");
   }
 
@@ -29,30 +35,40 @@ export default async function ReportsPage() {
 
   const [salesByStatusRaw, monthlySalesRaw, warehouses, movementsByWarehouse, stockLevels] =
     await Promise.all([
-      prisma.sale.groupBy({
-        by: ["status"],
-        _count: { _all: true },
-        _sum: { totalAmount: true },
-      }),
-      prisma.$queryRaw<{ month: Date; count: bigint; total: string }[]>`
-        SELECT date_trunc('month', "createdAt") AS month,
-               COUNT(*)::int AS count,
-               COALESCE(SUM("totalAmount"), 0) AS total
-        FROM sales
-        WHERE status != 'ANULADA' AND "createdAt" >= ${sixMonthsAgo}
-        GROUP BY 1
-        ORDER BY 1
-      `,
-      prisma.warehouse.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-      prisma.stockMovement.groupBy({
-        by: ["warehouseId", "type"],
-        _sum: { quantity: true },
-        where: { createdAt: { gte: thirtyDaysAgo } },
-      }),
-      prisma.stockLevel.findMany({
-        where: { variant: { active: true, product: { active: true } } },
-        include: { variant: { include: { product: true } } },
-      }),
+      verVentas
+        ? prisma.sale.groupBy({
+            by: ["status"],
+            _count: { _all: true },
+            _sum: { totalAmount: true },
+          })
+        : Promise.resolve([]),
+      verVentas
+        ? prisma.$queryRaw<{ month: Date; count: bigint; total: string }[]>`
+            SELECT date_trunc('month', "createdAt") AS month,
+                   COUNT(*)::int AS count,
+                   COALESCE(SUM("totalAmount"), 0) AS total
+            FROM sales
+            WHERE status != 'ANULADA' AND "createdAt" >= ${sixMonthsAgo}
+            GROUP BY 1
+            ORDER BY 1
+          `
+        : Promise.resolve([]),
+      verStock
+        ? prisma.warehouse.findMany({ where: { active: true }, orderBy: { name: "asc" } })
+        : Promise.resolve([]),
+      verStock
+        ? prisma.stockMovement.groupBy({
+            by: ["warehouseId", "type"],
+            _sum: { quantity: true },
+            where: { createdAt: { gte: thirtyDaysAgo } },
+          })
+        : Promise.resolve([]),
+      verStock
+        ? prisma.stockLevel.findMany({
+            where: { variant: { active: true, product: { active: true } } },
+            include: { variant: { include: { product: true } } },
+          })
+        : Promise.resolve([]),
     ]);
 
   // --- Ventas por estado ---
@@ -141,7 +157,11 @@ export default async function ReportsPage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-brand-900">Reportes</h1>
         <p className="text-sm text-slate-500">
-          Vista general de ventas, uso de bodega y stock.
+          {verVentas && verStock
+            ? "Vista general de ventas, uso de bodega y stock."
+            : verVentas
+              ? "Vista general de ventas."
+              : "Uso de bodega y stock."}
         </p>
       </div>
       <ReportsCharts
@@ -150,6 +170,8 @@ export default async function ReportsPage() {
         warehouseUsage={warehouseUsage}
         stockByCategory={stockByCategory}
         lowStockItems={lowStockItems}
+        showSales={verVentas}
+        showStock={verStock}
       />
     </div>
   );

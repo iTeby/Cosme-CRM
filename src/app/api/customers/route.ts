@@ -8,6 +8,9 @@ import { customerCreateSchema } from "@/lib/validation";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!can(session.user.role, "manageCustomers")) {
+    return NextResponse.json({ error: "No tienes permiso para ver clientes" }, { status: 403 });
+  }
 
   const customers = await prisma.customer.findMany({
     orderBy: { name: "asc" },

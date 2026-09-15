@@ -20,7 +20,6 @@ import { formatCurrency, formatNumber } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
   PENDIENTE: "#f59e0b",
-  PAGADA: "#1f2f45",
   ENTREGADA: "#10b981",
   ANULADA: "#ef4444",
 };
@@ -49,15 +48,22 @@ export function ReportsCharts({
   warehouseUsage,
   stockByCategory,
   lowStockItems,
+  showSales,
+  showStock,
 }: {
   salesByStatus: SalesByStatus;
   monthlySales: MonthlySales;
   warehouseUsage: WarehouseUsage;
   stockByCategory: StockByCategory;
   lowStockItems: LowStockItems;
+  /** Los datos de ventas ni siquiera se consultan si esto es false. */
+  showSales: boolean;
+  showStock: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {showSales && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>Ventas por estado</CardTitle>
@@ -129,7 +135,11 @@ export function ReportsCharts({
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
+      {showStock && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>Uso de bodega (últimos 30 días)</CardTitle>
@@ -182,7 +192,10 @@ export function ReportsCharts({
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
+      {showStock && (
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle>Productos con stock crítico</CardTitle>
@@ -211,6 +224,7 @@ export function ReportsCharts({
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

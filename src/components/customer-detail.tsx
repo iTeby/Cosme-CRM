@@ -10,7 +10,18 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { saleStatusLabels, saleStatusTone, type SaleStatus } from "@/lib/sales";
+import { round2 } from "@/lib/decimal";
+import {
+  outstanding,
+  paymentStateLabels,
+  paymentStateOf,
+  paymentStateTone,
+  saleStatusLabels,
+  saleStatusTone,
+  type SaleStatus,
+} from "@/lib/sales";
+import { paymentMethodLabels, type PaymentMethod } from "@/lib/payments";
+import { PaymentForm } from "@/components/payment-form";
 
 interface SaleItemRow {
   id: string;
@@ -22,8 +33,19 @@ interface SaleRow {
   number: number;
   status: SaleStatus;
   totalAmount: string;
+  paidAmount: string;
   createdAt: string;
   items: SaleItemRow[];
+}
+
+interface PaymentRow {
+  id: string;
+  amount: string;
+  method: PaymentMethod;
+  notes: string | null;
+  createdAt: string;
+  sale: { number: number } | null;
+  createdBy: { name: string | null };
 }
 
 interface CustomerData {
@@ -36,29 +58,72 @@ interface CustomerData {
   notes: string | null;
   active: boolean;
   sales: SaleRow[];
+  payments: PaymentRow[];
 }
 
 export function CustomerDetail({
   customer,
   canManage,
+  canViewPayments,
+  canManagePayments,
+  cashShiftOpen,
 }: {
   customer: CustomerData;
   canManage: boolean;
+  canViewPayments: boolean;
+  canManagePayments: boolean;
+  cashShiftOpen: boolean;
 }) {
   const router = useRouter();
+  const [pagoError, setPagoError] = useState<string | null>(null);
+
+  // La libreta de fiados: lo que el cliente debe hoy. Una venta anulada no se
+  // cobra, así que no suma, igual que en payAccount() del servidor.
+  const deuda = round2(
+    customer.sales
+      .filter((venta) => venta.status !== "ANULADA")
+      .reduce((acc, venta) => acc + outstanding(venta.totalAmount, venta.paidAmount), 0)
+  );
+
+  async function deshacerPago(id: string) {
+    setPagoError(null);
+    const res = await fetch(`/api/payments/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setPagoError(typeof data.error === "string" ? data.error : "No se pudo deshacer el pago.");
+      return;
+    }
+    router.refresh();
+  }
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-start justify-between">
         <div>
           <Link href="/customers" className="text-xs font-medium text-slate-400 hover:text-brand-700">
             ← Volver a clientes
           </Link>
           <h1 className="mt-1 text-xl font-semibold text-brand-900">{customer.name}</h1>
         </div>
-        <Badge tone={customer.active ? "good" : "neutral"}>
-          {customer.active ? "Activo" : "Inactivo"}
-        </Badge>
+        <div className="flex items-center gap-6">
+          {canViewPayments && (
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Deuda</p>
+              <p
+                className={
+                  deuda > 0
+                    ? "text-lg font-semibold text-red-700"
+                    : "text-lg font-semibold text-emerald-700"
+                }
+              >
+                {formatCurrency(deuda)}
+              </p>
+            </div>
+          )}
+          <Badge tone={customer.active ? "good" : "neutral"}>
+            {customer.active ? "Activo" : "Inactivo"}
+          </Badge>
+        </div>
       </div>
 
       <CustomerFields customer={customer} canManage={canManage} onSaved={() => router.refresh()} />
@@ -80,35 +145,144 @@ export function CustomerDetail({
                   <Th>Fecha</Th>
                   <Th>Líneas</Th>
                   <Th>Total</Th>
+                  {canViewPayments && <Th>Abonado</Th>}
+                  {canViewPayments && <Th>Saldo</Th>}
                   <Th>Estado</Th>
+                  {canViewPayments && <Th>Pago</Th>}
                 </Tr>
               </Thead>
               <Tbody>
-                {customer.sales.map((sale) => (
-                  <Tr key={sale.id}>
-                    <Td>
-                      <Link
-                        href={`/sales/${sale.id}`}
-                        className="font-medium text-brand-700 hover:underline"
-                      >
-                        #{sale.number}
-                      </Link>
-                    </Td>
-                    <Td className="text-xs text-slate-500">{formatDate(sale.createdAt)}</Td>
-                    <Td>{sale.items.length}</Td>
-                    <Td>{formatCurrency(sale.totalAmount)}</Td>
-                    <Td>
-                      <Badge tone={saleStatusTone[sale.status]}>
-                        {saleStatusLabels[sale.status]}
-                      </Badge>
-                    </Td>
-                  </Tr>
-                ))}
+                {customer.sales.map((venta) => {
+                  const saldo = outstanding(venta.totalAmount, venta.paidAmount);
+                  const anulada = venta.status === "ANULADA";
+                  const estadoPago = paymentStateOf(venta.totalAmount, venta.paidAmount);
+                  return (
+                    <Tr key={venta.id}>
+                      <Td>
+                        <Link
+                          href={`/sales/${venta.id}`}
+                          className="font-medium text-brand-700 hover:underline"
+                        >
+                          #{venta.number}
+                        </Link>
+                      </Td>
+                      <Td className="text-xs text-slate-500">{formatDate(venta.createdAt)}</Td>
+                      <Td>{venta.items.length}</Td>
+                      <Td>{formatCurrency(venta.totalAmount)}</Td>
+                      {canViewPayments && <Td>{formatCurrency(venta.paidAmount)}</Td>}
+                      {canViewPayments && (
+                        <Td className={saldo > 0 && !anulada ? "font-medium text-red-700" : ""}>
+                          {anulada ? "—" : formatCurrency(saldo)}
+                        </Td>
+                      )}
+                      <Td>
+                        <Badge tone={saleStatusTone[venta.status]}>
+                          {saleStatusLabels[venta.status]}
+                        </Badge>
+                      </Td>
+                      {canViewPayments && (
+                        <Td>
+                          {anulada ? (
+                            <span className="text-xs text-slate-400">—</span>
+                          ) : (
+                            <Badge tone={paymentStateTone[estadoPago]}>
+                              {paymentStateLabels[estadoPago]}
+                            </Badge>
+                          )}
+                        </Td>
+                      )}
+                    </Tr>
+                  );
+                })}
               </Tbody>
             </Table>
           )}
         </CardContent>
       </Card>
+
+      {canViewPayments && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Abonos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {customer.payments.length === 0 ? (
+              <p className="mb-5 text-sm text-slate-500">
+                Este cliente todavía no tiene abonos registrados.
+              </p>
+            ) : (
+              <div className="mb-5 overflow-hidden rounded-lg border border-slate-200">
+                <Table>
+                  <Thead>
+                    <Tr>
+                      <Th>Fecha</Th>
+                      <Th>Monto</Th>
+                      <Th>Medio</Th>
+                      <Th>Venta</Th>
+                      <Th>Nota</Th>
+                      <Th>Quién</Th>
+                      {canManagePayments && <Th />}
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {customer.payments.map((pago) => (
+                      <Tr key={pago.id}>
+                        <Td className="whitespace-nowrap text-xs text-slate-500">
+                          {formatDate(pago.createdAt)}
+                        </Td>
+                        <Td className="font-medium">{formatCurrency(pago.amount)}</Td>
+                        <Td>{paymentMethodLabels[pago.method]}</Td>
+                        <Td className="text-slate-500">
+                          {pago.sale ? `#${pago.sale.number}` : "—"}
+                        </Td>
+                        <Td className="text-slate-500">{pago.notes || "—"}</Td>
+                        <Td className="text-slate-500">{pago.createdBy.name || "—"}</Td>
+                        {canManagePayments && (
+                          <Td>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => deshacerPago(pago.id)}
+                            >
+                              Deshacer
+                            </Button>
+                          </Td>
+                        )}
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              </div>
+            )}
+
+            {pagoError && (
+              <p className="mb-4 text-sm text-red-600" role="alert">
+                {pagoError}
+              </p>
+            )}
+
+            {deuda <= 0 ? (
+              <p className="text-sm text-emerald-700">Este cliente no tiene deuda pendiente.</p>
+            ) : canManagePayments ? (
+              <div>
+                <p className="mb-3 text-sm text-slate-500">
+                  Abonar a cuenta: el monto se reparte desde la venta más antigua hacia la más
+                  nueva, como una libreta de fiados.
+                </p>
+                <PaymentForm
+                  customerId={customer.id}
+                  saldo={deuda}
+                  cashShiftOpen={cashShiftOpen}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Debe {formatCurrency(deuda)}. No tienes permiso para registrar pagos.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

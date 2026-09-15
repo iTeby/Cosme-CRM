@@ -5,18 +5,27 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
 import { formatQuantity, sumQuantities, toNumber } from "@/lib/decimal";
 import { movementTypeLabels } from "@/lib/movements";
+import { outstanding } from "@/lib/sales";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   if (!session) return null;
 
   const canViewSales = can(session.user.role, "viewSales");
+  const canViewPayments = can(session.user.role, "viewPayments");
   const canViewPurchases = can(session.user.role, "viewPurchases");
 
-  const [productCount, variants, recentMovements, pendingSales, pendingPurchases] = await Promise.all([
+  const [
+    productCount,
+    variants,
+    recentMovements,
+    pendingSales,
+    receivables,
+    pendingPurchases,
+  ] = await Promise.all([
     prisma.product.count({ where: { active: true } }),
     prisma.productVariant.findMany({
       where: { active: true },
@@ -28,8 +37,17 @@ export default async function DashboardPage() {
       include: { variant: { include: { product: true } }, user: { select: { name: true } } },
     }),
     canViewSales
-      ? prisma.sale.count({ where: { status: { in: ["PENDIENTE", "PAGADA"] } } })
+      ? prisma.sale.count({ where: { status: "PENDIENTE" } })
       : Promise.resolve(0),
+    // Cuánta plata hay en la calle: el saldo de todas las ventas no anuladas.
+    // Se calcula en la base y no trayendo las ventas, porque con un año de
+    // operación esto son miles de filas.
+    canViewPayments
+      ? prisma.sale.aggregate({
+          where: { status: { not: "ANULADA" } },
+          _sum: { totalAmount: true, paidAmount: true },
+        })
+      : Promise.resolve(null),
     canViewPurchases
       ? prisma.purchase.count({ where: { status: "PENDIENTE" } })
       : Promise.resolve(0),
@@ -41,6 +59,12 @@ export default async function DashboardPage() {
   const totalUnits = variants
     .filter((v) => v.unit === "UN")
     .reduce((sum, v) => sum + sumQuantities(v.stockLevels.map((l) => l.quantity)), 0);
+  // outstanding() y no una resta directa: los dos vienen como Decimal y
+  // restarlos sin normalizar concatena en silencio.
+  const porCobrar = receivables
+    ? outstanding(receivables._sum.totalAmount ?? 0, receivables._sum.paidAmount ?? 0)
+    : 0;
+
   const lowStock = variants.filter((v) => {
     const total = sumQuantities(v.stockLevels.map((l) => l.quantity));
     return total <= toNumber(v.lowStockThreshold);
@@ -52,7 +76,12 @@ export default async function DashboardPage() {
     { label: "Unidades en stock", value: formatNumber(totalUnits) },
     { label: "Con stock bajo", value: formatNumber(lowStock.length), warn: lowStock.length > 0 },
     ...(canViewSales
-      ? [{ label: "Ventas por entregar", value: formatNumber(pendingSales) }]
+      ? [
+          { label: "Ventas por entregar", value: formatNumber(pendingSales) },
+        ]
+      : []),
+    ...(canViewPayments
+      ? [{ label: "Por cobrar", value: formatCurrency(porCobrar), warn: porCobrar > 0 }]
       : []),
     ...(canViewPurchases
       ? [{ label: "Compras por recibir", value: formatNumber(pendingPurchases) }]

@@ -12,8 +12,10 @@ type NavLink = {
   href: string;
   label: string;
   // Permiso que habilita el enlace, tomado de src/lib/rbac.ts. `null` =
-  // visible para cualquier sesión iniciada.
-  permission: Permission | null;
+  // visible para cualquier sesión iniciada. Una lista significa "cualquiera
+  // de estos": Reportes tiene dos secciones con permisos distintos y basta
+  // con poder ver una para que el enlace tenga sentido.
+  permission: Permission | Permission[] | null;
 };
 
 // Cada enlace declara su permiso en vez de comparar roles a mano. Son los
@@ -23,13 +25,15 @@ type NavLink = {
 const navLinks: NavLink[] = [
   { href: "/dashboard", label: "Panel", permission: null },
   { href: "/products", label: "Productos", permission: "viewCatalog" },
-  { href: "/inventory", label: "Inventario", permission: "viewCatalog" },
+  { href: "/inventory", label: "Inventario", permission: ["viewCatalog", "manageStock"] },
+  { href: "/inventory/lotes", label: "Vencimientos", permission: ["viewCatalog", "manageStock"] },
   { href: "/production", label: "Producción", permission: "viewProduction" },
   { href: "/sales", label: "Ventas", permission: "viewSales" },
+  { href: "/cash", label: "Caja", permission: "viewCashShift" },
   { href: "/customers", label: "Clientes", permission: "manageCustomers" },
   { href: "/purchases", label: "Compras", permission: "viewPurchases" },
   { href: "/suppliers", label: "Proveedores", permission: "manageSuppliers" },
-  { href: "/reports", label: "Reportes", permission: "viewReports" },
+  { href: "/reports", label: "Reportes", permission: ["viewSalesReports", "viewStockReports"] },
   { href: "/users", label: "Usuarios", permission: "manageUsers" },
 ];
 
@@ -41,9 +45,11 @@ export function NavSidebar({
   userRole: UserRole;
 }) {
   const pathname = usePathname();
-  const visibleLinks = navLinks.filter(
-    (link) => link.permission === null || can(userRole, link.permission)
-  );
+  const visibleLinks = navLinks.filter((link) => {
+    if (link.permission === null) return true;
+    const requeridos = Array.isArray(link.permission) ? link.permission : [link.permission];
+    return requeridos.some((permiso) => can(userRole, permiso));
+  });
 
   return (
     // sticky top-0 + h-screen: el menú queda fijo en la pantalla mientras
