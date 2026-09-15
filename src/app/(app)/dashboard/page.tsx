@@ -67,7 +67,8 @@ export default async function DashboardPage() {
 
   const lowStock = variants.filter((v) => {
     const total = sumQuantities(v.stockLevels.map((l) => l.quantity));
-    return total <= toNumber(v.lowStockThreshold);
+    const threshold = toNumber(v.lowStockThreshold);
+    return threshold > 0 && total <= threshold;
   });
 
   const stats = [

@@ -41,13 +41,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { name, description, category, active } = parsed.data;
+  const { name, description, category, pricingType, url, active } = parsed.data;
 
   try {
     const product = await prisma.$transaction(async (tx) => {
       const updated = await tx.product.update({
         where: { id: params.id },
-        data: { name, description: description || null, category: category || null, active },
+        data: {
+          name,
+          description: description || null,
+          category: category || null,
+          pricingType,
+          url: url || null,
+          active,
+        },
       });
 
       // Bloquear un producto también bloquea sus variantes: los selectores

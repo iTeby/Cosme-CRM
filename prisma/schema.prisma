@@ -304,12 +304,24 @@ model PurchaseItem {
   @@map("purchase_items")
 }
 
+// Cómo se cobra un producto. FIJO es el catálogo con precio; COTIZADO son
+// los proyectos a medida (el precio de la variante queda en 0 y la
+// interfaz muestra "Cotizado"); SUSCRIPCION es un cobro recurrente.
+enum PricingType {
+  FIJO
+  COTIZADO
+  SUSCRIPCION
+}
+
 model Product {
   id          String           @id @default(cuid())
   tenantId    String           @default("cosme")
   name        String
   description String?
   category    String?
+  pricingType PricingType      @default(FIJO)
+  /// Página pública del servicio o del demo en vivo.
+  url         String?
   active      Boolean          @default(true)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt

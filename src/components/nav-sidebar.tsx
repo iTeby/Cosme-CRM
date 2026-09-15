@@ -22,19 +22,27 @@ type NavLink = {
 // mismos permisos que exigen las páginas en src/app/(app)/, así que el menú
 // no puede ofrecer un enlace que después rebote al dashboard: si mañana
 // cambia una regla en rbac.ts, el menú la hereda sin tocar este archivo.
+// Cosme SpA vende servicios de software: no hay stock, mesón ni proveedores
+// hoy. Las pestañas de almacén siguen existiendo por URL y su código está
+// intacto; solo salen del menú. Para reactivar una, se mueve su línea de
+// dormantLinks a navLinks.
 const navLinks: NavLink[] = [
   { href: "/dashboard", label: "Panel", permission: null },
   { href: "/products", label: "Productos", permission: "viewCatalog" },
+  { href: "/customers", label: "Clientes", permission: "manageCustomers" },
+  { href: "/sales", label: "Ventas", permission: "viewSales" },
+  { href: "/reports", label: "Reportes", permission: ["viewSalesReports", "viewStockReports"] },
+  { href: "/users", label: "Usuarios", permission: "manageUsers" },
+];
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const dormantLinks: NavLink[] = [
   { href: "/inventory", label: "Inventario", permission: ["viewCatalog", "manageStock"] },
   { href: "/inventory/lotes", label: "Vencimientos", permission: ["viewCatalog", "manageStock"] },
   { href: "/production", label: "Producción", permission: "viewProduction" },
-  { href: "/sales", label: "Ventas", permission: "viewSales" },
   { href: "/cash", label: "Caja", permission: "viewCashShift" },
-  { href: "/customers", label: "Clientes", permission: "manageCustomers" },
   { href: "/purchases", label: "Compras", permission: "viewPurchases" },
   { href: "/suppliers", label: "Proveedores", permission: "manageSuppliers" },
-  { href: "/reports", label: "Reportes", permission: ["viewSalesReports", "viewStockReports"] },
-  { href: "/users", label: "Usuarios", permission: "manageUsers" },
 ];
 
 export function NavSidebar({

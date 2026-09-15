@@ -13,6 +13,7 @@ import { Table, Thead, Tbody, Tr, Th, Td } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { formatQuantity, sumQuantities, toNumber } from "@/lib/decimal";
 import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
+import { PRICING_TYPES, pricingTypeLabels, type PricingType } from "@/lib/pricing-types";
 
 interface StockLevel {
   id: string;
@@ -40,6 +41,8 @@ interface ProductData {
   name: string;
   description: string | null;
   category: string | null;
+  pricingType: PricingType;
+  url: string | null;
   active: boolean;
   variants: Variant[];
 }
@@ -96,6 +99,7 @@ export function ProductDetail({
                 <VariantRow
                   key={variant.id}
                   variant={variant}
+                  pricingType={product.pricingType}
                   canManage={canManage}
                   canViewCost={canViewCost}
                   onSaved={() => router.refresh()}
@@ -127,6 +131,8 @@ function ProductFields({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(product.name);
   const [category, setCategory] = useState(product.category ?? "");
+  const [pricingType, setPricingType] = useState<PricingType>(product.pricingType);
+  const [url, setUrl] = useState(product.url ?? "");
   const [description, setDescription] = useState(product.description ?? "");
   const [active, setActive] = useState(product.active);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +144,7 @@ function ProductFields({
     const res = await fetch(`/api/products/${product.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, category, description, active }),
+      body: JSON.stringify({ name, category, pricingType, url, description, active }),
     });
     setLoading(false);
 
@@ -160,6 +166,22 @@ function ProductFields({
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Categoría</dt>
               <dd className="text-slate-700">{product.category || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Tipo de precio</dt>
+              <dd className="text-slate-700">{pricingTypeLabels[product.pricingType]}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Enlace</dt>
+              <dd className="text-slate-700">
+                {product.url ? (
+                  <a href={product.url} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">
+                    {product.url}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Descripción</dt>
@@ -199,6 +221,24 @@ function ProductFields({
               ))}
             </Select>
           </div>
+          <div>
+            <Label htmlFor="edit-pricing-type">Tipo de precio</Label>
+            <Select
+              id="edit-pricing-type"
+              value={pricingType}
+              onChange={(e) => setPricingType(e.target.value as PricingType)}
+            >
+              {PRICING_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {pricingTypeLabels[t]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-url">Enlace</Label>
+            <Input id="edit-url" type="url" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
+          </div>
           <div className="flex items-end gap-2 pb-1">
             <input
               id="edit-active"
@@ -236,11 +276,13 @@ function ProductFields({
 
 function VariantRow({
   variant,
+  pricingType,
   canManage,
   canViewCost,
   onSaved,
 }: {
   variant: Variant;
+  pricingType: PricingType;
   canManage: boolean;
   canViewCost: boolean;
   onSaved: () => void;
@@ -264,7 +306,9 @@ function VariantRow({
   const [loading, setLoading] = useState(false);
 
   const totalStock = sumQuantities(variant.stockLevels.map((l) => l.quantity));
-  const lowStock = totalStock <= toNumber(variant.lowStockThreshold);
+  // Umbral 0 significa "sin alerta": un servicio no tiene stock que vigilar.
+  const alertThreshold = toNumber(variant.lowStockThreshold);
+  const lowStock = alertThreshold > 0 && totalStock <= alertThreshold;
 
   async function handleSave() {
     setError(null);
@@ -411,7 +455,7 @@ function VariantRow({
       </Td>
       <Td className="font-mono text-xs text-slate-500">{variant.barcode || "—"}</Td>
       <Td>{variant.attributes || "—"}</Td>
-      <Td>{formatCurrency(variant.price)}</Td>
+      <Td>{pricingType === "COTIZADO" ? "Cotizado" : formatCurrency(variant.price)}</Td>
       {canViewCost && <Td>{formatCurrency(variant.cost)}</Td>}
       <Td>
         <span className={lowStock ? "font-medium text-amber-700" : ""}>

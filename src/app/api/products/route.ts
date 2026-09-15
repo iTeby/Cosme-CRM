@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { name, description, category, variants } = parsed.data;
+  const { name, description, category, pricingType, url, variants } = parsed.data;
 
   const skus = variants.map((v) => v.sku);
   if (new Set(skus).size !== skus.length) {
@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
           name,
           description: description || null,
           category: category || null,
+          pricingType,
+          url: url || null,
           variants: {
             create: variants.map((v) => ({
               sku: v.sku,

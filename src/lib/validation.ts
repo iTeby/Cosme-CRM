@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
+import { PRICING_TYPES } from "@/lib/pricing-types";
 import { manualMovementTypes } from "@/lib/movements";
 import { paymentMethods } from "@/lib/payments";
 
@@ -32,6 +33,17 @@ const monto = (mensaje: string) =>
 // curada — así el desplegable y el backend nunca se desincronizan.
 const categorySchema = z
   .enum(PRODUCT_CATEGORIES)
+  .optional()
+  .or(z.literal(""));
+
+const pricingTypeSchema = z.enum(PRICING_TYPES).default("FIJO");
+
+// Enlace público del producto: la página del servicio o el demo en vivo.
+const urlSchema = z
+  .string()
+  .trim()
+  .url("El enlace no es válido")
+  .max(300)
   .optional()
   .or(z.literal(""));
 
@@ -75,15 +87,19 @@ export const variantInputSchema = z.object({
 
 export const productCreateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
-  description: z.string().trim().max(500).optional().or(z.literal("")),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
   category: categorySchema,
+  pricingType: pricingTypeSchema,
+  url: urlSchema,
   variants: z.array(variantInputSchema).min(1, "Agrega al menos una variante/SKU").max(MAX_LINEAS),
 });
 
 export const productUpdateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
-  description: z.string().trim().max(500).optional().or(z.literal("")),
+  description: z.string().trim().max(2000).optional().or(z.literal("")),
   category: categorySchema,
+  pricingType: pricingTypeSchema,
+  url: urlSchema,
   active: z.boolean(),
 });
 

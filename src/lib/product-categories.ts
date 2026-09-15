@@ -2,6 +2,8 @@
 // tocar para agregar/quitar una categoría — se usa tanto en el desplegable
 // de Producto (crear/editar) como en la validación del backend.
 export const PRODUCT_CATEGORIES = [
+  "Servicios",
+  "Demos",
   "Limpieza",
   "Cuidado Personal",
   "Artículos de Oficina",

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
+import { PRICING_TYPES, pricingTypeLabels, type PricingType } from "@/lib/pricing-types";
 
 interface VariantDraft {
   sku: string;
@@ -36,6 +37,8 @@ export function ProductForm() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [pricingType, setPricingType] = useState<PricingType>("FIJO");
+  const [url, setUrl] = useState("");
   const [variants, setVariants] = useState<VariantDraft[]>([emptyVariant()]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,6 +64,8 @@ export function ProductForm() {
       name,
       description,
       category,
+      pricingType,
+      url,
       variants: variants.map((v) => ({
         sku: v.sku,
         barcode: v.barcode,
@@ -118,6 +123,24 @@ export function ProductForm() {
                 ))}
               </Select>
             </div>
+            <div>
+              <Label htmlFor="pricing-type">Tipo de precio</Label>
+              <Select
+                id="pricing-type"
+                value={pricingType}
+                onChange={(e) => setPricingType(e.target.value as PricingType)}
+              >
+                {PRICING_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {pricingTypeLabels[t]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="url">Enlace (página del servicio o demo)</Label>
+            <Input id="url" type="url" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
           </div>
           <div>
             <Label htmlFor="description">Descripción</Label>

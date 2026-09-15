@@ -129,7 +129,8 @@ function ProductRow({
   );
   const hasLowStock = product.variants.some((v) => {
     const qty = sumQuantities(v.stockLevels.map((l) => l.quantity));
-    return qty <= toNumber(v.lowStockThreshold);
+    const threshold = toNumber(v.lowStockThreshold);
+    return threshold > 0 && qty <= threshold;
   });
 
   async function handleToggleActive() {
