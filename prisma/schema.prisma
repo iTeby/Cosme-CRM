@@ -20,9 +20,16 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// Los roles no son una jerarquía sino oficios distintos, y cuáles existen
+// depende del rubro. En un almacén de barrio no hay "bodega" ni "compras":
+// hay quien atiende el mostrador —CAJERO— y quien es dueña del negocio.
+// BODEGA y COMPRAS se mantienen porque sí existen en el rubro para el que se
+// construyó esto primero; sacarlos rompería a quien ya los usa y no le
+// agrega nada al almacén, que simplemente no los asigna.
 enum UserRole {
   ADMIN
   VENTAS
+  CAJERO
   BODEGA
   COMPRAS
 }
@@ -40,19 +47,76 @@ enum MovementType {
   PRODUCCION
 }
 
-// Estados de una venta: Pendiente (recién creada, ya descontó stock) ->
-// Pagada -> Entregada. Anulada revierte el stock descontado y congela
-// la venta; solo se puede anular si todavía no fue entregada.
+// Estado de ENTREGA de una venta. Ya no incluye PAGADA, y esa ausencia es
+// deliberada: una venta tiene dos ejes independientes que antes compartían un
+// solo campo. Con fiado, la mercadería sale el lunes y se paga el viernes, así
+// que "entregada" y "pagada" pueden ser ciertas por separado y en cualquier
+// orden — con un solo enum eso era inexpresable.
+//
+// Lo pagado se deriva de los abonos: ver paymentStateOf() en src/lib/sales.ts.
+// Nadie puede marcar una venta como pagada sin que entre la plata.
 enum SaleStatus {
   PENDIENTE
-  PAGADA
   ENTREGADA
   ANULADA
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  DEBITO
+  CREDITO
+  TRANSFERENCIA
 }
 
 // Estados de una orden de compra: a diferencia de una venta, una compra NO
 // afecta el stock al crearse — solo cuando se marca RECIBIDA (ahí se generan
 // las entradas de stock). Anular revierte el stock si ya se había recibido.
+// Documento tributario electrónico. Los códigos son los del SII.
+enum DteType {
+  BOLETA // 39 — boleta electrónica afecta
+  BOLETA_EXENTA // 41
+  FACTURA // 33
+}
+
+// El ambiente viaja con cada documento, no solo en la configuración. Un
+// documento de certificación tiene que poder distinguirse de uno real para
+// siempre, aunque mañana la variable de entorno cambie.
+enum DteEnvironment {
+  CERTIFICACION
+  PRODUCCION
+}
+
+enum DteStatus {
+  PENDIENTE // creado en la base, todavía sin enviar
+  ENVIADO // el proveedor lo aceptó, el SII aún no responde
+  ACEPTADO // el SII lo aceptó
+  RECHAZADO // el SII lo rechazó
+  ERROR // falló el envío y consta que no se emitió nada
+  // No se sabe si el folio se consumió: la llamada se cortó por tiempo, se
+  // cayó la red después de enviar, o el proveedor respondió algo que no se
+  // pudo interpretar. "Falló" e "No sé" no son lo mismo: un ERROR se puede
+  // reintentar al instante, un INDETERMINADO no, porque reintentar sobre un
+  // folio ya consumido emite el segundo. Se desbloquea a mano, después de
+  // mirar el portal del proveedor.
+  INDETERMINADO
+  ANULADO // anulado con nota de crédito
+}
+
+// Estado de un lote. Un lote bloqueado sigue existiendo y sigue contando en
+// el stock, pero no se puede despachar: sirve para apartar mercadería
+// sospechosa sin hacerla desaparecer del inventario, que es lo que pasaría
+// si se descontara.
+enum LotStatus {
+  DISPONIBLE
+  BLOQUEADO
+  VENCIDO
+}
+
+enum ShiftStatus {
+  ABIERTO
+  CERRADO
+}
+
 enum PurchaseStatus {
   PENDIENTE
   RECIBIDA
@@ -73,6 +137,9 @@ model User {
   sales          Sale[]
   purchases      Purchase[]
   productions    ProductionOrder[]
+  payments       Payment[]
+  shiftsOpened   CashShift[]     @relation("ShiftOpenedBy")
+  shiftsClosed   CashShift[]     @relation("ShiftClosedBy")
 
   @@index([tenantId])
   @@map("users")
@@ -91,6 +158,8 @@ model Warehouse {
   sales       Sale[]
   purchases   Purchase[]
   productions ProductionOrder[]
+  shifts      CashShift[]
+  lots        Lot[]
 
   @@index([tenantId])
   @@map("warehouses")
@@ -107,10 +176,11 @@ model Customer {
   email     String?
   address   String?
   notes     String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   sales     Sale[]
+  payments  Payment[]
 
   @@index([tenantId])
   @@map("customers")
@@ -129,17 +199,30 @@ model Sale {
   warehouseId String
   status      SaleStatus      @default(PENDIENTE)
   totalAmount Decimal         @default(0) @db.Decimal(12, 2)
+  // Snapshot de lo abonado, mantenido en la misma transacción que cada pago.
+  // Payment es la fuente de verdad y paidAmount su suma, igual que
+  // StockMovement y StockLevel.
+  paidAmount  Decimal         @default(0) @db.Decimal(12, 2)
   notes       String?
+  // Turno de caja en el que se registró. Nulo si no había turno abierto:
+  // una venta fiada no toca el cajón, así que no se bloquea por eso.
+  // Restrict, no el SetNull por defecto: un turno arqueado no se borra, y si
+  // alguien lo intentara, perder el vínculo en silencio sería peor que fallar.
+  shift       CashShift?      @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  shiftId     String?
   createdBy   User            @relation(fields: [createdById], references: [id])
   createdById String
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   items       SaleItem[]
   movements   StockMovement[]
+  payments    Payment[]
+  dtes        Dte[]
 
   @@index([customerId])
   @@index([status])
   @@index([tenantId])
+  @@index([shiftId])
   @@map("sales")
 }
 
@@ -242,8 +325,24 @@ model ProductVariant {
   product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId         String
   sku               String
+  // El código impreso en el envase, el que lee la pistola. NO es el SKU: el
+  // SKU lo inventa el almacén y el código de barras viene del fabricante.
+  // Dos variantes pueden no tener código (NULL no colisiona en Postgres),
+  // pero dos no pueden compartir uno: la pistola tiene que resolver a uno.
+  barcode           String?
   attributes        String?
   unit              String          @default("UN")
+  // Si este producto se maneja por lotes. Falso por defecto y a propósito:
+  // obligar a elegir lote para vender un kilo de arroz haría la caja
+  // impracticable. Se activa en lo que vence: pan, lácteos, fiambres.
+  tracksLots        Boolean         @default(false)
+  /// Días de vida útil desde que se recibe. Sirve para proponer el
+  /// vencimiento al ingresar mercadería; el pan son 1 o 2, la leche 20.
+  shelfLifeDays     Int?
+  /// Desde cuántos días antes se considera "por vencer". No puede ser un
+  /// número único para todo el almacén: para el pan 1 día es tarde y para
+  /// un tarro de conservas 30 días es prematuro. Nulo usa el valor global.
+  nearExpiryDays    Int?
   price             Decimal         @default(0) @db.Decimal(12, 2)
   cost              Decimal         @default(0) @db.Decimal(12, 2)
   lowStockThreshold Decimal         @default(5) @db.Decimal(12, 3)
@@ -257,8 +356,10 @@ model ProductVariant {
   recipe            Recipe?
   recipeUses        RecipeItem[]
   productionItems   ProductionItem[]
+  lots              Lot[]
 
   @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
   @@index([productId])
   @@index([tenantId])
   @@map("product_variants")
@@ -303,8 +404,14 @@ model StockMovement {
   purchaseId  String?
   production  ProductionOrder? @relation(fields: [productionId], references: [id], onDelete: Restrict)
   productionId String?
+  // El lote al que pertenece el movimiento, cuando el producto los lleva.
+  // Nulo para todo lo que no vence, que es la mayoría del almacén. Restrict
+  // por lo mismo que arriba: un lote con historial no se borra.
+  lot         Lot?           @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  lotId       String?
   createdAt   DateTime       @default(now())
 
+  @@index([lotId])
   @@index([variantId])
   @@index([warehouseId])
   @@index([saleId])
@@ -400,4 +507,203 @@ model ProductionItem {
   @@index([productionId])
   @@index([variantId])
   @@map("production_items")
+}
+
+// --- Pagos y fiado ---
+//
+// El almacén fía: la venta se lleva hoy y se paga el viernes, a veces en
+// partes. Payment es el historial de lo que entró y Sale.paidAmount su suma,
+// exactamente el mismo patrón que StockMovement y StockLevel.
+//
+// Un pago con saleId apunta a una venta concreta. Un abono a cuenta —la
+// persona llega y deja plata sin decir contra qué— se reparte entre sus ventas
+// impagas de la más antigua a la más nueva, generando un Payment por cada una:
+// así todo abono queda atribuido y paidAmount nunca se despega de la suma.
+model Payment {
+  id          String        @id @default(cuid())
+  tenantId    String        @default("cosme")
+  number      Int           @unique @default(autoincrement())
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  customerId  String
+  // onDelete: Restrict — el historial de pagos no se borra junto con la venta.
+  sale        Sale?         @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  saleId      String?
+  amount      Decimal       @db.Decimal(12, 2)
+  method      PaymentMethod
+  notes       String?
+  // El turno en que entró la plata. Obligatorio de hecho para EFECTIVO —lo
+  // exige src/lib/cash.ts—, porque un pago en efectivo sin turno no se puede
+  // cuadrar contra ningún arqueo. Los demás medios no pasan por el cajón.
+  // Restrict por lo mismo que Sale.shift: si el turno desapareciera, este
+  // pago quedaría con shiftId nulo y pasaría a ser borrable pese a haber
+  // entrado en un arqueo firmado.
+  shift       CashShift?    @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  shiftId     String?
+  createdBy   User          @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([saleId])
+  @@index([shiftId])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+// Turno de caja.
+//
+// Un turno es el período entre que alguien abre el cajón con un fondo y lo
+// cierra contando lo que hay. Sirve para una sola pregunta, que es la que se
+// hace todos los días al cerrar: ¿la plata que hay en el cajón es la que
+// debería haber? La respuesta es `difference`, y que sea distinta de cero no
+// es un error del sistema: es información sobre el día.
+//
+// Solo puede haber un turno abierto por bodega a la vez, y eso lo garantiza
+// la base, no la aplicación: `openKey` vale mientras el turno está abierto y
+// pasa a NULL al cerrarlo. Postgres no considera iguales dos NULL en un
+// índice único, así que los turnos cerrados conviven sin chocar y dos
+// aperturas simultáneas de la misma bodega chocan con P2002. Una condición
+// verificada en código dejaría la ventana entre el SELECT y el INSERT.
+model CashShift {
+  id             String      @id @default(cuid())
+  tenantId       String      @default("cosme")
+  number         Int         @unique @default(autoincrement())
+  warehouse      Warehouse   @relation(fields: [warehouseId], references: [id])
+  warehouseId    String
+  status         ShiftStatus @default(ABIERTO)
+  /// "<tenantId>:<warehouseId>" mientras está abierto, NULL al cerrar.
+  openKey        String?     @unique
+  /// Fondo con el que se abre el cajón.
+  openingAmount  Decimal     @default(0) @db.Decimal(12, 2)
+  /// Operaciones en efectivo registradas contra este turno. Se incrementa de
+  /// forma atómica en cada una y de paso es lo que toma el lock de esta fila:
+  /// sin eso, un cobro en efectivo podría colarse entre el momento en que el
+  /// cierre congela el esperado y el conteo, y el arqueo cuadraría mal sin que
+  /// nadie supiera por qué.
+  cashOps        Int         @default(0)
+  /// Efectivo que el sistema esperaba al cierre. Se congela al cerrar: es lo
+  /// que se calculó en ese momento, no lo que daría recalcularlo hoy.
+  expectedAmount Decimal?    @db.Decimal(12, 2)
+  /// Efectivo contado a mano al cerrar.
+  countedAmount  Decimal?    @db.Decimal(12, 2)
+  /// countedAmount - expectedAmount. Negativo es faltante.
+  difference     Decimal?    @db.Decimal(12, 2)
+  openingNotes   String?
+  closingNotes   String?
+  openedBy       User        @relation("ShiftOpenedBy", fields: [openedById], references: [id])
+  openedById     String
+  openedAt       DateTime    @default(now())
+  closedBy       User?       @relation("ShiftClosedBy", fields: [closedById], references: [id])
+  closedById     String?
+  closedAt       DateTime?
+  sales          Sale[]
+  payments       Payment[]
+
+  @@index([tenantId])
+  @@index([warehouseId])
+  @@index([status])
+  @@index([openedAt])
+  @@map("cash_shifts")
+}
+
+// Boleta electrónica y otros documentos tributarios.
+//
+// La fila se crea ANTES de llamar al proveedor y se actualiza después. Es a
+// propósito: la llamada HTTP no puede ir dentro de la transacción —mantendría
+// locks abiertos durante toda la latencia de red—, y si el proceso se cae
+// entre el envío y la respuesta, queda el rastro de que se intentó. Sin la
+// fila previa, un corte en ese punto emitiría un folio real sin que el
+// sistema supiera que existe.
+//
+// `environment` se guarda por documento y no se deduce de la configuración:
+// una boleta de certificación tiene que seguir siendo reconocible como tal
+// dentro de un año, aunque para entonces el sistema esté emitiendo de verdad.
+model Dte {
+  id             String         @id @default(cuid())
+  tenantId       String         @default("cosme")
+  sale           Sale           @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  saleId         String
+  type           DteType
+  environment    DteEnvironment
+  /// Quién lo emitió: "openfactura", "simulado". Cambiar de proveedor no debe
+  /// obligar a reinterpretar los documentos ya emitidos.
+  provider       String
+  status         DteStatus      @default(PENDIENTE)
+  /// Lo asigna el SII a través del proveedor. Nulo hasta que responde.
+  folio          Int?
+  netAmount      Decimal        @db.Decimal(12, 2)
+  taxAmount      Decimal        @db.Decimal(12, 2)
+  totalAmount    Decimal        @db.Decimal(12, 2)
+  /// Cuánto se alejó el total del documento del total de la venta al
+  /// redondear a peso entero. Se guarda porque si algún día no es un
+  /// redondeo sino una diferencia real, tiene que poder verse.
+  roundingDelta  Decimal        @default(0) @db.Decimal(12, 2)
+  /// Un documento por venta, tipo y ambiente. El unique es lo que impide que
+  /// dos clics emitan dos boletas de la misma venta.
+  idempotencyKey String         @unique
+  externalId     String?
+  trackId        String?
+  pdfUrl         String?
+  /// La respuesta cruda del proveedor, para poder diagnosticar sin adivinar.
+  rawResponse    String?
+  errorMessage   String?
+  issuedAt       DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  /// Un folio no se repite dentro de un tipo y un ambiente. Los nulos no
+  /// colisionan, así que los documentos aún sin folio conviven.
+  @@unique([tenantId, environment, type, folio])
+  @@index([tenantId])
+  @@index([saleId])
+  @@index([status])
+  @@map("dtes")
+}
+
+// Lote de mercadería.
+//
+// Un lote es una tanda que entró junta y vence junta: la hornada de las seis
+// de la mañana, la caja de leche que llegó el martes. Existe por una sola
+// razón operativa: poder despachar siempre lo que vence primero, y saber qué
+// hay que rebajar o botar antes de que se pierda.
+//
+// Mismo patrón que StockLevel: `quantity` es un snapshot y la verdad son los
+// StockMovement que apuntan a este lote. La suma de esos movimientos tiene
+// que dar esta cantidad, y de mantenerlo se encarga src/lib/inventory.ts y
+// nadie más.
+//
+// No todo producto lleva lote. La mayoría del almacén no vence en un plazo
+// que importe, y obligar a elegir lote para vender arroz haría la caja
+// impracticable: lo decide ProductVariant.tracksLots.
+model Lot {
+  id          String         @id @default(cuid())
+  tenantId    String         @default("cosme")
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variantId   String
+  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  warehouseId String
+  /// El número que trae el envase, o uno propio para lo que se hornea acá.
+  code        String
+  /// Nulo significa que no vence. No es lo mismo que vencer hoy.
+  expiresAt   DateTime?
+  receivedAt  DateTime       @default(now())
+  /// Snapshot. La suma de los movimientos de este lote tiene que dar esto.
+  quantity    Decimal        @default(0) @db.Decimal(12, 3)
+  status      LotStatus      @default(DISPONIBLE)
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  movements   StockMovement[]
+
+  /// El mismo número de lote del mismo producto en la misma bodega es el
+  /// mismo lote: recibir dos veces suma, no duplica.
+  @@unique([tenantId, variantId, warehouseId, code])
+  /// El índice que hace barato el FEFO: por producto y bodega, ordenado por
+  /// vencimiento, que es exactamente la consulta que corre en cada venta.
+  @@index([variantId, warehouseId, expiresAt])
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@index([status])
+  @@map("lots")
 }

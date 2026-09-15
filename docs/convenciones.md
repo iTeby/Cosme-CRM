@@ -5,9 +5,8 @@ conviene tener presentes antes de tocarlo.
 
 ## Entornos
 
-- Producción: https://cosme-crm-green.vercel.app — Vercel, deploy automático al
-  hacer push a `main`.
-- Base de datos: Neon, proyecto `cosme-crm-produccion`, branch `production`.
+- Producción: Vercel, deploy automático al hacer push a `main`.
+- Base de datos: PostgreSQL en Neon (branch `production`).
 - `.env` nunca se commitea (está en `.gitignore`): contiene `DATABASE_URL` y
   `NEXTAUTH_SECRET`.
 

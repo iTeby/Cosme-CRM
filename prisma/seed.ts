@@ -17,6 +17,7 @@ async function main() {
   const users = [
     { email: "admin@cosme.cl", name: "Admin Cosme", role: "ADMIN" as const, password: "Admin123!" },
     { email: "ventas@cosme.cl", name: "Equipo Ventas", role: "VENTAS" as const, password: "Ventas123!" },
+    { email: "caja@cosme.cl", name: "Mostrador", role: "CAJERO" as const, password: "Caja123!" },
     { email: "bodega@cosme.cl", name: "Equipo Bodega", role: "BODEGA" as const, password: "Bodega123!" },
     { email: "compras@cosme.cl", name: "Equipo Compras", role: "COMPRAS" as const, password: "Compras123!" },
   ];

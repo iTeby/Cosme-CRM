@@ -9,10 +9,14 @@
 //   SEED_ADMIN_PASSWORD="una-clave-segura" \
 //   npm run db:seed:prod
 //
-// Si no defines las variables, usa valores por defecto que DEBES cambiar
-// apenas inicies sesión.
+// SEED_ADMIN_PASSWORD ya no tiene valor por defecto. Antes, si no la
+// definías, la cuenta ADMIN de producción quedaba con "CambiaEstaClave123!":
+// una clave conocida, escrita en el repositorio, en la base real. El aviso de
+// "cámbiala apenas inicies sesión" no sirve de nada si alguien entra antes.
+// Ahora, si no la defines, se genera una al azar y se imprime una sola vez.
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
+import { randomBytes } from "crypto";
 
 const prisma = new PrismaClient();
 
@@ -26,7 +30,9 @@ async function main() {
 
   const email = process.env.SEED_ADMIN_EMAIL || "admin@cosme.cl";
   const name = process.env.SEED_ADMIN_NAME || "Administrador";
-  const password = process.env.SEED_ADMIN_PASSWORD || "CambiaEstaClave123!";
+  const passwordDelEntorno = process.env.SEED_ADMIN_PASSWORD;
+  const generada = !passwordDelEntorno;
+  const password = passwordDelEntorno || randomBytes(18).toString("base64url");
 
   const passwordHash = await hash(password, 10);
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -37,8 +43,14 @@ async function main() {
       data: { email, name, role: "ADMIN", passwordHash },
     });
     console.log("Usuario administrador creado:");
-    console.log(`  ${email} / ${password}`);
-    console.log("Inicia sesión y cambia esta contraseña de inmediato desde Usuarios.");
+    if (generada) {
+      console.log(`  ${email}`);
+      console.log(`  Contraseña generada al azar: ${password}`);
+      console.log("Guárdala ahora: no se vuelve a mostrar y no queda en ningún archivo.");
+    } else {
+      console.log(`  ${email} (con la contraseña de SEED_ADMIN_PASSWORD)`);
+    }
+    console.log("Inicia sesión y cámbiala de inmediato desde Usuarios.");
   }
 }
 
