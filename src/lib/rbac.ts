@@ -57,6 +57,13 @@ const permissions = {
   viewProduction: ["ADMIN", "VENTAS", "CAJERO", "BODEGA"],
   manageProduction: ["ADMIN", "BODEGA", "CAJERO"],
   manageRecipes: ["ADMIN"],
+  // Comercial de Cosme: interesados, cotizaciones, facturas y suscripciones
+  // los lleva quien vende.
+  manageQuotes: ["ADMIN", "VENTAS"],
+  viewQuotes: ["ADMIN", "VENTAS"],
+  manageInvoices: ["ADMIN", "VENTAS"],
+  manageSubscriptions: ["ADMIN", "VENTAS"],
+  viewSubscriptions: ["ADMIN", "VENTAS"],
 } satisfies Record<string, UserRole[]>;
 
 export type Permission = keyof typeof permissions;

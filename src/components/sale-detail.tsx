@@ -22,6 +22,7 @@ import {
 import { paymentMethodLabels, type PaymentMethod } from "@/lib/payments";
 import { PaymentForm } from "@/components/payment-form";
 import { DteCard, type DteRow } from "@/components/dte-card";
+import { InvoiceCard, type InvoiceRow } from "@/components/invoice-card";
 
 interface SaleItem {
   id: string;
@@ -50,7 +51,10 @@ interface SaleData {
   status: SaleStatus;
   totalAmount: string;
   paidAmount: string;
+  discountAmount: string;
+  purchaseOrder: string | null;
   payments: PaymentRow[];
+  invoices: InvoiceRow[];
   notes: string | null;
   createdAt: string;
   customer: { id: string; name: string; taxId: string | null };
@@ -70,6 +74,7 @@ export function SaleDetail({
   canViewPayments,
   canManagePayments,
   cashShiftOpen,
+  canManageInvoices,
   dte,
 }: {
   sale: SaleData;
@@ -78,6 +83,7 @@ export function SaleDetail({
   canViewPayments: boolean;
   canManagePayments: boolean;
   cashShiftOpen: boolean;
+  canManageInvoices: boolean;
   /** Null cuando el rol no puede ver documentos tributarios. */
   dte: {
     rows: DteRow[];
@@ -159,11 +165,31 @@ export function SaleDetail({
             <p className="text-slate-700">{sale.createdBy.name || "—"}</p>
           </div>
           <div>
+            <p className="text-xs uppercase tracking-wide text-slate-400">Orden de compra</p>
+            <p className="text-slate-700">{sale.purchaseOrder || "—"}</p>
+          </div>
+          {Number(sale.discountAmount) > 0 && (
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Descuento aplicado</p>
+              <p className="text-slate-700">{formatCurrency(sale.discountAmount)} (crédito de Diagnóstico)</p>
+            </div>
+          )}
+          <div>
             <p className="text-xs uppercase tracking-wide text-slate-400">Notas</p>
             <p className="text-slate-700">{sale.notes || "—"}</p>
           </div>
         </CardContent>
       </Card>
+
+      {canViewPayments && (
+        <InvoiceCard
+          saleId={sale.id}
+          saleTotal={sale.totalAmount}
+          salePaid={sale.paidAmount}
+          invoices={sale.invoices}
+          canManage={canManageInvoices && !anulada}
+        />
+      )}
 
       <Card className="mt-6">
         <CardHeader>
@@ -316,8 +342,8 @@ export function SaleDetail({
           <CardContent>
             {sale.status !== "ANULADA" && (
               <p className="mb-3 text-xs text-slate-500">
-                Anular esta venta repone automáticamente el stock que había descontado. Si tiene
-                abonos registrados, hay que deshacerlos antes.
+                Anular esta venta repone el stock que hubiera descontado (los servicios no
+                descuentan). Si tiene abonos registrados, hay que deshacerlos antes.
               </p>
             )}
             {error && (

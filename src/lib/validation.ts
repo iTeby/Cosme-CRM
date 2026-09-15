@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { PRODUCT_CATEGORIES } from "@/lib/product-categories";
 import { PRICING_TYPES } from "@/lib/pricing-types";
+import { CUSTOMER_STAGES, LEAD_SOURCES } from "@/lib/customers";
+import { CURRENCIES } from "@/lib/quotes";
 import { manualMovementTypes } from "@/lib/movements";
 import { paymentMethods } from "@/lib/payments";
 
@@ -138,17 +140,118 @@ export const userUpdateSchema = z.object({
     .or(z.literal("")),
 });
 
+// Fecha opcional que llega como texto desde un <input type="date">.
+const fechaOpcional = z
+  .string()
+  .trim()
+  .optional()
+  .or(z.literal(""))
+  .transform((v) => (v ? new Date(v) : null))
+  .refine((v) => v === null || !Number.isNaN(v.getTime()), "Fecha inválida");
+
+const fechaObligatoria = z
+  .string()
+  .trim()
+  .min(1, "La fecha es obligatoria")
+  .transform((v) => new Date(v))
+  .refine((v) => !Number.isNaN(v.getTime()), "Fecha inválida");
+
 export const customerCreateSchema = z.object({
   name: z.string().trim().min(2, "El nombre es muy corto").max(120),
+  contactName: z.string().trim().max(120).optional().or(z.literal("")),
+  stage: z.enum(CUSTOMER_STAGES).default("NUEVO"),
+  source: z.enum(LEAD_SOURCES).optional().or(z.literal("")),
+  nextContactAt: fechaOpcional,
   taxId: z.string().trim().max(20).optional().or(z.literal("")),
   phone: z.string().trim().max(30).optional().or(z.literal("")),
   email: z.string().trim().toLowerCase().max(160).optional().or(z.literal("")),
   address: z.string().trim().max(200).optional().or(z.literal("")),
-  notes: z.string().trim().max(500).optional().or(z.literal("")),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
 export const customerUpdateSchema = customerCreateSchema.extend({
   active: z.boolean(),
+});
+
+// Respuestas del guion: una por pregunta, texto libre. Vacío = sin responder.
+export const qualificationAnswersSchema = z.object({
+  answers: z
+    .array(z.object({ questionId: z.string().min(1), answer: z.string().trim().max(4000) }))
+    .max(50),
+});
+
+// --- Cotizaciones ---
+export const quoteItemInputSchema = z.object({
+  variantId: z.string().min(1, "Selecciona un ítem del catálogo"),
+  description: z.string().trim().min(1, "Describe la línea").max(1000),
+  quantity: z.coerce.number().positive("La cantidad debe ser mayor que cero").max(999_999),
+  unitPrice: monto("El precio no puede ser negativo"),
+});
+
+export const quoteCreateSchema = z.object({
+  customerId: z.string().min(1, "Selecciona un cliente"),
+  currency: z.enum(CURRENCIES).default("CLP"),
+  validUntil: fechaObligatoria,
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  items: z.array(quoteItemInputSchema).min(1, "Agrega al menos una línea").max(MAX_LINEAS),
+});
+
+export const quoteStatusSchema = z.object({
+  status: z.enum(["ENVIADA", "RECHAZADA", "BORRADOR"]),
+});
+
+// Convertir en venta: en UF hace falta el valor del día; el crédito de
+// Diagnóstico se aplica solo si el usuario lo pide y existe.
+export const quoteConvertSchema = z.object({
+  purchaseOrder: z.string().trim().max(60).optional().or(z.literal("")),
+  ufValue: z.coerce.number().positive().max(1_000_000).optional(),
+  applyCredit: z.boolean().default(false),
+});
+
+// --- Facturas (emitidas en el SII; acá solo se registran) ---
+export const invoiceCreateSchema = z.object({
+  saleId: z.string().min(1),
+  number: z.string().trim().min(1, "Falta el folio").max(20),
+  issuedAt: fechaObligatoria,
+  netAmount: z.coerce.number().positive("El neto debe ser mayor que cero").max(9_999_999_999),
+  driveUrl: z.string().trim().url("El enlace no es válido").max(500).optional().or(z.literal("")),
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
+});
+
+export const invoiceUpdateSchema = z.object({
+  driveUrl: z.string().trim().url("El enlace no es válido").max(500).optional().or(z.literal("")),
+  status: z.enum(["EMITIDA", "ANULADA"]).optional(),
+});
+
+// --- Suscripciones ---
+export const subscriptionCreateSchema = z.object({
+  customerId: z.string().min(1, "Selecciona un cliente"),
+  name: z.string().trim().min(2, "El nombre es muy corto").max(120),
+  currency: z.enum(CURRENCIES).default("CLP"),
+  amount: z.coerce.number().positive("El monto debe ser mayor que cero").max(9_999_999_999),
+  startsAt: fechaObligatoria,
+  renewsAt: fechaObligatoria,
+  hoursIncluded: z.coerce.number().int().min(0).max(10_000).default(0),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  saleId: z.string().optional().or(z.literal("")),
+});
+
+export const subscriptionUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  amount: z.coerce.number().positive().max(9_999_999_999),
+  renewsAt: fechaObligatoria,
+  hoursIncluded: z.coerce.number().int().min(0).max(10_000),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  status: z.enum(["ACTIVA", "CANCELADA"]),
+});
+
+export const subscriptionHoursSchema = z.object({
+  hours: z.coerce.number().positive("Las horas deben ser mayores que cero").max(1000),
+  description: z.string().trim().min(2, "Describe el trabajo").max(500),
+});
+
+export const subscriptionRenewSchema = z.object({
+  ufValue: z.coerce.number().positive().max(1_000_000).optional(),
 });
 
 export const saleItemInputSchema = z.object({
@@ -159,6 +262,7 @@ export const saleItemInputSchema = z.object({
 
 export const saleCreateSchema = z.object({
   customerId: z.string().min(1, "Selecciona un cliente"),
+  purchaseOrder: z.string().trim().max(60).optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
   items: z.array(saleItemInputSchema).min(1, "Agrega al menos un producto").max(MAX_LINEAS),
 });

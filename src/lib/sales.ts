@@ -14,7 +14,7 @@ import { round2, toNumber, type Numeric } from "./decimal";
 export type SaleStatus = "PENDIENTE" | "ENTREGADA" | "ANULADA";
 
 export const saleStatusLabels: Record<SaleStatus, string> = {
-  PENDIENTE: "Por entregar",
+  PENDIENTE: "En curso",
   ENTREGADA: "Entregada",
   ANULADA: "Anulada",
 };

@@ -20,6 +20,7 @@ interface Variant {
   sku: string;
   attributes: string | null;
   price: string;
+  tracksStock: boolean;
   product: { name: string };
   stockLevels: { quantity: number | string }[];
 }
@@ -40,6 +41,7 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
 
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
   const [notes, setNotes] = useState("");
+  const [purchaseOrder, setPurchaseOrder] = useState("");
   const [items, setItems] = useState<LineItem[]>([
     emptyLine(variants[0]?.id ?? "", variants[0]?.price ?? "0"),
   ]);
@@ -89,6 +91,7 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         customerId,
+        purchaseOrder,
         notes,
         items: items.map((line) => ({
           variantId: line.variantId,
@@ -115,7 +118,7 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
       <div>
         <h1 className="text-xl font-semibold text-brand-900">Nueva venta</h1>
         <p className="text-sm text-slate-500">
-          Al guardar, se descuenta el stock de cada línea automáticamente.
+          Los servicios no descuentan stock. Los productos físicos, sí, automáticamente.
         </p>
       </div>
 
@@ -139,6 +142,15 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
             </Select>
           </div>
           <div>
+            <Label htmlFor="sale-po">Orden de compra del cliente</Label>
+            <Input
+              id="sale-po"
+              value={purchaseOrder}
+              onChange={(e) => setPurchaseOrder(e.target.value)}
+              placeholder="Opcional"
+            />
+          </div>
+          <div>
             <Label htmlFor="sale-notes">Notas</Label>
             <Input
               id="sale-notes"
@@ -156,9 +168,10 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
         </CardHeader>
         <CardContent className="space-y-4">
           {items.map((line, index) => {
+            const tracksStock = variantsById.get(line.variantId)?.tracksStock ?? true;
             const available = stockFor(line.variantId);
             const wanted = Number(line.quantity) || 0;
-            const overStock = wanted > available;
+            const overStock = tracksStock && wanted > available;
 
             return (
               <div key={index} className="rounded-lg border border-slate-200 p-4">
@@ -190,9 +203,11 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
                         </option>
                       ))}
                     </Select>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Stock disponible: {formatNumber(available)}
-                    </p>
+                    {tracksStock && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Stock disponible: {formatNumber(available)}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor={`item-qty-${index}`}>Cantidad</Label>

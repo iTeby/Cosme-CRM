@@ -30,7 +30,9 @@ const navLinks: NavLink[] = [
   { href: "/dashboard", label: "Panel", permission: null },
   { href: "/products", label: "Productos", permission: "viewCatalog" },
   { href: "/customers", label: "Clientes", permission: "manageCustomers" },
+  { href: "/quotes", label: "Cotizaciones", permission: "viewQuotes" },
   { href: "/sales", label: "Ventas", permission: "viewSales" },
+  { href: "/subscriptions", label: "Suscripciones", permission: "viewSubscriptions" },
   { href: "/reports", label: "Reportes", permission: ["viewSalesReports", "viewStockReports"] },
   { href: "/users", label: "Usuarios", permission: "manageUsers" },
 ];

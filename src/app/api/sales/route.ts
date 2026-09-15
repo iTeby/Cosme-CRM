@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { customerId, notes, items } = parsed.data;
+  const { customerId, purchaseOrder, notes, items } = parsed.data;
 
   try {
     const sale = await prisma.$transaction(async (tx) => {
@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
           warehouseId: warehouse.id,
           shiftId: turno?.id ?? null,
           createdById: session.user.id,
+          purchaseOrder: purchaseOrder || null,
           notes: notes || null,
           totalAmount,
         },
@@ -104,6 +105,10 @@ export async function POST(req: NextRequest) {
             subtotal: subtotales[index],
           },
         });
+
+        // Un servicio no tiene stock que descontar: la línea queda registrada
+        // y no se escribe ningún movimiento.
+        if (!variant.tracksStock) continue;
 
         if (variant.tracksLots) {
           // Sale primero lo que vence primero. Escribe un movimiento por

@@ -138,6 +138,9 @@ model User {
   purchases      Purchase[]
   productions    ProductionOrder[]
   payments       Payment[]
+  quotes         Quote[]
+  invoices       Invoice[]
+  hourLogs       SubscriptionHourLog[]
   shiftsOpened   CashShift[]     @relation("ShiftOpenedBy")
   shiftsClosed   CashShift[]     @relation("ShiftClosedBy")
 
@@ -176,11 +179,22 @@ model Customer {
   email     String?
   address   String?
   notes     String?
+  // Persona con quien se habla; `name` es el negocio.
+  contactName String?
+  stage       CustomerStage @default(NUEVO)
+  source      LeadSource?
+  nextContactAt DateTime?
+  // El Diagnóstico pagado se descuenta una sola vez de cualquier proyecto
+  // posterior. Se marca acá cuándo se consumió; el monto se lee de la venta.
+  diagnosticCreditUsedAt DateTime?
   active    Boolean   @default(true)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   sales     Sale[]
   payments  Payment[]
+  quotes    Quote[]
+  subscriptions Subscription[]
+  answers   QualificationAnswer[]
 
   @@index([tenantId])
   @@map("customers")
@@ -203,6 +217,11 @@ model Sale {
   // Payment es la fuente de verdad y paidAmount su suma, igual que
   // StockMovement y StockLevel.
   paidAmount  Decimal         @default(0) @db.Decimal(12, 2)
+  // Descuento aplicado sobre la suma de líneas (hoy: crédito de Diagnóstico).
+  // totalAmount ya lo tiene restado.
+  discountAmount Decimal      @default(0) @db.Decimal(12, 2)
+  // Orden de compra del cliente, cuando la hay.
+  purchaseOrder String?
   notes       String?
   // Turno de caja en el que se registró. Nulo si no había turno abierto:
   // una venta fiada no toca el cajón, así que no se bloquea por eso.
@@ -218,6 +237,9 @@ model Sale {
   movements   StockMovement[]
   payments    Payment[]
   dtes        Dte[]
+  quote       Quote?
+  invoices    Invoice[]
+  subscriptions Subscription[]
 
   @@index([customerId])
   @@index([status])
@@ -313,6 +335,45 @@ enum PricingType {
   SUSCRIPCION
 }
 
+// Etapa de un interesado hasta convertirse en cliente. PERDIDO cierra sin venta.
+enum CustomerStage {
+  NUEVO
+  CALIFICADO
+  COTIZADO
+  CLIENTE
+  PERDIDO
+}
+
+enum LeadSource {
+  WHATSAPP
+  WEB
+  DEMO
+  REFERIDO
+  OTRO
+}
+
+enum QuoteStatus {
+  BORRADOR
+  ENVIADA
+  ACEPTADA
+  RECHAZADA
+}
+
+enum Currency {
+  CLP
+  UF
+}
+
+enum InvoiceStatus {
+  EMITIDA
+  ANULADA
+}
+
+enum SubscriptionStatus {
+  ACTIVA
+  CANCELADA
+}
+
 model Product {
   id          String           @id @default(cuid())
   tenantId    String           @default("cosme")
@@ -348,6 +409,8 @@ model ProductVariant {
   // obligar a elegir lote para vender un kilo de arroz haría la caja
   // impracticable. Se activa en lo que vence: pan, lácteos, fiambres.
   tracksLots        Boolean         @default(false)
+  // Falso para servicios: vender uno no descuenta stock ni exige tenerlo.
+  tracksStock       Boolean         @default(true)
   /// Días de vida útil desde que se recibe. Sirve para proponer el
   /// vencimiento al ingresar mercadería; el pan son 1 o 2, la leche 20.
   shelfLifeDays     Int?
@@ -369,6 +432,7 @@ model ProductVariant {
   recipeUses        RecipeItem[]
   productionItems   ProductionItem[]
   lots              Lot[]
+  quoteItems        QuoteItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, barcode])
@@ -718,4 +782,156 @@ model Lot {
   @@index([expiresAt])
   @@index([status])
   @@map("lots")
+}
+
+// --- Cosme SpA: interesados, guion, cotizaciones, facturas, suscripciones ---
+
+// Guion de calificación: las preguntas que se hacen a todo interesado, en
+// orden. Vive en la base para que cualquier vendedor haga exactamente las
+// mismas y las respuestas queden junto al cliente.
+model QualificationQuestion {
+  id        String   @id @default(cuid())
+  tenantId  String   @default("cosme")
+  position  Int
+  block     String
+  text      String
+  /// Por qué se pregunta: para que quien la use entienda qué averigua.
+  reason    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  answers   QualificationAnswer[]
+
+  @@index([tenantId])
+  @@map("qualification_questions")
+}
+
+model QualificationAnswer {
+  id         String   @id @default(cuid())
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String
+  question   QualificationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId String
+  answer     String
+  updatedAt  DateTime @updatedAt
+
+  @@unique([customerId, questionId])
+  @@map("qualification_answers")
+}
+
+// Una cotización nunca toca stock. Si se acepta se convierte en una venta y
+// queda ligada a ella. Los montos van en la moneda de la cotización; al
+// convertir una en UF se fija el valor del día y la venta nace en pesos.
+model Quote {
+  id          String      @id @default(cuid())
+  tenantId    String      @default("cosme")
+  number      Int         @unique @default(autoincrement())
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  customerId  String
+  status      QuoteStatus @default(BORRADOR)
+  currency    Currency    @default(CLP)
+  /// Valor de la UF usado al convertir. Nulo hasta entonces o en CLP.
+  ufValue     Decimal?    @db.Decimal(12, 2)
+  validUntil  DateTime
+  notes       String?
+  totalAmount Decimal     @default(0) @db.Decimal(12, 2)
+  sentAt      DateTime?
+  acceptedAt  DateTime?
+  sale        Sale?       @relation(fields: [saleId], references: [id])
+  saleId      String?     @unique
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  items       QuoteItem[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([tenantId])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          String         @id @default(cuid())
+  quote       Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId     String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  variantId   String
+  /// Detalle de la línea; para proyectos a medida es lo que describe el trabajo.
+  description String
+  quantity    Decimal        @db.Decimal(12, 3)
+  unitPrice   Decimal        @db.Decimal(12, 2)
+  subtotal    Decimal        @db.Decimal(12, 2)
+
+  @@index([quoteId])
+  @@map("quote_items")
+}
+
+// Factura emitida en el SII por fuera. El CRM guarda el folio, los montos y
+// el enlace al PDF; el estado de pago se lee de la venta.
+model Invoice {
+  id          String        @id @default(cuid())
+  tenantId    String        @default("cosme")
+  /// Folio del SII.
+  number      String
+  sale        Sale          @relation(fields: [saleId], references: [id])
+  saleId      String
+  issuedAt    DateTime
+  netAmount   Decimal       @db.Decimal(12, 2)
+  taxAmount   Decimal       @db.Decimal(12, 2)
+  totalAmount Decimal       @db.Decimal(12, 2)
+  driveUrl    String?
+  status      InvoiceStatus @default(EMITIDA)
+  notes       String?
+  createdBy   User          @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  @@unique([tenantId, number])
+  @@index([saleId])
+  @@map("invoices")
+}
+
+// Cobro recurrente anual (licencia, mantención). Renovar crea la venta del
+// nuevo periodo y corre la fecha un año.
+model Subscription {
+  id            String             @id @default(cuid())
+  tenantId      String             @default("cosme")
+  customer      Customer           @relation(fields: [customerId], references: [id])
+  customerId    String
+  name          String
+  currency      Currency           @default(CLP)
+  /// Monto anual, en la moneda indicada.
+  amount        Decimal            @db.Decimal(12, 2)
+  startsAt      DateTime
+  renewsAt      DateTime
+  hoursIncluded Int                @default(0)
+  hoursUsed     Decimal            @default(0) @db.Decimal(8, 2)
+  status        SubscriptionStatus @default(ACTIVA)
+  notes         String?
+  /// Venta que la originó o la última renovación.
+  sale          Sale?              @relation(fields: [saleId], references: [id])
+  saleId        String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  hourLogs      SubscriptionHourLog[]
+
+  @@index([customerId])
+  @@index([renewsAt])
+  @@index([tenantId])
+  @@map("subscriptions")
+}
+
+model SubscriptionHourLog {
+  id             String       @id @default(cuid())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscriptionId String
+  hours          Decimal      @db.Decimal(6, 2)
+  description    String
+  loggedAt       DateTime     @default(now())
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  createdById    String
+
+  @@index([subscriptionId])
+  @@map("subscription_hour_logs")
 }

@@ -22,6 +22,50 @@ import {
 } from "@/lib/sales";
 import { paymentMethodLabels, type PaymentMethod } from "@/lib/payments";
 import { PaymentForm } from "@/components/payment-form";
+import { Select } from "@/components/ui/select";
+import {
+  CUSTOMER_STAGES,
+  LEAD_SOURCES,
+  customerStageLabels,
+  customerStageTone,
+  leadSourceLabels,
+  type CustomerStage,
+  type LeadSource,
+} from "@/lib/customers";
+import {
+  formatQuoteAmount,
+  isExpired,
+  quoteStatusLabels,
+  quoteStatusTone,
+  type Currency,
+  type QuoteStatus,
+} from "@/lib/quotes";
+import {
+  subscriptionDisplayState,
+  subscriptionStateLabels,
+  subscriptionStateTone,
+  type SubscriptionStatus,
+} from "@/lib/subscriptions";
+import { QualificationScript, type AnswerRow, type QuestionRow } from "@/components/qualification-script";
+
+interface QuoteRow {
+  id: string;
+  number: number;
+  status: QuoteStatus;
+  currency: Currency;
+  totalAmount: string;
+  validUntil: string;
+  createdAt: string;
+}
+
+interface SubscriptionRow {
+  id: string;
+  name: string;
+  status: SubscriptionStatus;
+  currency: Currency;
+  amount: string;
+  renewsAt: string;
+}
 
 interface SaleItemRow {
   id: string;
@@ -51,6 +95,10 @@ interface PaymentRow {
 interface CustomerData {
   id: string;
   name: string;
+  contactName: string | null;
+  stage: CustomerStage;
+  source: LeadSource | null;
+  nextContactAt: string | null;
   taxId: string | null;
   phone: string | null;
   email: string | null;
@@ -59,6 +107,8 @@ interface CustomerData {
   active: boolean;
   sales: SaleRow[];
   payments: PaymentRow[];
+  quotes: QuoteRow[];
+  subscriptions: SubscriptionRow[];
 }
 
 export function CustomerDetail({
@@ -67,12 +117,18 @@ export function CustomerDetail({
   canViewPayments,
   canManagePayments,
   cashShiftOpen,
+  questions,
+  answers,
+  diagnosticCredit,
 }: {
   customer: CustomerData;
   canManage: boolean;
   canViewPayments: boolean;
   canManagePayments: boolean;
   cashShiftOpen: boolean;
+  questions: QuestionRow[];
+  answers: AnswerRow[];
+  diagnosticCredit: number;
 }) {
   const router = useRouter();
   const [pagoError, setPagoError] = useState<string | null>(null);
@@ -104,8 +160,18 @@ export function CustomerDetail({
             ← Volver a clientes
           </Link>
           <h1 className="mt-1 text-xl font-semibold text-brand-900">{customer.name}</h1>
+          {customer.contactName && (
+            <p className="text-sm text-slate-500">Contacto: {customer.contactName}</p>
+          )}
         </div>
         <div className="flex items-center gap-6">
+          {diagnosticCredit > 0 && (
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Crédito Diagnóstico</p>
+              <p className="text-lg font-semibold text-brand-700">{formatCurrency(diagnosticCredit)}</p>
+            </div>
+          )}
+          <Badge tone={customerStageTone[customer.stage]}>{customerStageLabels[customer.stage]}</Badge>
           {canViewPayments && (
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-slate-400">Deuda</p>
@@ -127,6 +193,117 @@ export function CustomerDetail({
       </div>
 
       <CustomerFields customer={customer} canManage={canManage} onSaved={() => router.refresh()} />
+
+      <div className="mt-6">
+        <QualificationScript
+          customerId={customer.id}
+          questions={questions}
+          answers={answers}
+          canManage={canManage}
+        />
+      </div>
+
+      <Card className="mt-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Cotizaciones</CardTitle>
+          {canManage && (
+            <Link href={`/quotes/new?customerId=${customer.id}`}>
+              <Button variant="secondary">Nueva cotización</Button>
+            </Link>
+          )}
+        </CardHeader>
+        <CardContent className="p-0">
+          {customer.quotes.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500">
+              Sin cotizaciones todavía.
+            </p>
+          ) : (
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>N°</Th>
+                  <Th>Fecha</Th>
+                  <Th>Válida hasta</Th>
+                  <Th>Total</Th>
+                  <Th>Estado</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {customer.quotes.map((q) => {
+                  const vencida = isExpired(q.status, q.validUntil);
+                  return (
+                    <Tr key={q.id}>
+                      <Td>
+                        <Link href={`/quotes/${q.id}`} className="font-medium text-brand-700 hover:underline">
+                          #{q.number}
+                        </Link>
+                      </Td>
+                      <Td className="text-xs text-slate-500">{formatDate(q.createdAt)}</Td>
+                      <Td className={vencida ? "text-xs text-red-700" : "text-xs text-slate-500"}>
+                        {formatDate(q.validUntil)}
+                      </Td>
+                      <Td>{formatQuoteAmount(q.totalAmount, q.currency)}</Td>
+                      <Td>
+                        <Badge tone={vencida ? "critical" : quoteStatusTone[q.status]}>
+                          {vencida ? "Vencida" : quoteStatusLabels[q.status]}
+                        </Badge>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Suscripciones</CardTitle>
+          {canManage && (
+            <Link href={`/subscriptions?customerId=${customer.id}`}>
+              <Button variant="secondary">Nueva suscripción</Button>
+            </Link>
+          )}
+        </CardHeader>
+        <CardContent className="p-0">
+          {customer.subscriptions.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500">
+              Sin suscripciones.
+            </p>
+          ) : (
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Nombre</Th>
+                  <Th>Monto anual</Th>
+                  <Th>Renueva</Th>
+                  <Th>Estado</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {customer.subscriptions.map((s) => {
+                  const estado = subscriptionDisplayState(s.status, s.renewsAt);
+                  return (
+                    <Tr key={s.id}>
+                      <Td>
+                        <Link href={`/subscriptions/${s.id}`} className="font-medium text-brand-700 hover:underline">
+                          {s.name}
+                        </Link>
+                      </Td>
+                      <Td>{formatQuoteAmount(s.amount, s.currency)}</Td>
+                      <Td className="text-xs text-slate-500">{formatDate(s.renewsAt)}</Td>
+                      <Td>
+                        <Badge tone={subscriptionStateTone[estado]}>{subscriptionStateLabels[estado]}</Badge>
+                      </Td>
+                    </Tr>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>
@@ -298,6 +475,12 @@ function CustomerFields({
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(customer.name);
+  const [contactName, setContactName] = useState(customer.contactName ?? "");
+  const [stage, setStage] = useState<CustomerStage>(customer.stage);
+  const [source, setSource] = useState<LeadSource | "">(customer.source ?? "");
+  const [nextContactAt, setNextContactAt] = useState(
+    customer.nextContactAt ? customer.nextContactAt.slice(0, 10) : ""
+  );
   const [taxId, setTaxId] = useState(customer.taxId ?? "");
   const [phone, setPhone] = useState(customer.phone ?? "");
   const [email, setEmail] = useState(customer.email ?? "");
@@ -313,7 +496,19 @@ function CustomerFields({
     const res = await fetch(`/api/customers/${customer.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, taxId, phone, email, address, notes, active }),
+      body: JSON.stringify({
+        name,
+        contactName,
+        stage,
+        source,
+        nextContactAt,
+        taxId,
+        phone,
+        email,
+        address,
+        notes,
+        active,
+      }),
     });
     setLoading(false);
 
@@ -332,6 +527,24 @@ function CustomerFields({
       <Card>
         <CardContent className="flex items-start justify-between py-4">
           <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Etapa</dt>
+              <dd className="text-slate-700">{customerStageLabels[customer.stage]}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Por dónde llegó</dt>
+              <dd className="text-slate-700">{customer.source ? leadSourceLabels[customer.source] : "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Persona de contacto</dt>
+              <dd className="text-slate-700">{customer.contactName || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-slate-400">Próximo contacto</dt>
+              <dd className="text-slate-700">
+                {customer.nextContactAt ? formatDate(customer.nextContactAt) : "—"}
+              </dd>
+            </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">RUT / ID</dt>
               <dd className="text-slate-700">{customer.taxId || "—"}</dd>
@@ -368,8 +581,42 @@ function CustomerFields({
       <CardContent className="space-y-4 py-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="edit-c-name">Nombre</Label>
+            <Label htmlFor="edit-c-name">Negocio / nombre</Label>
             <Input id="edit-c-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="edit-c-contact">Persona de contacto</Label>
+            <Input id="edit-c-contact" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="edit-c-stage">Etapa</Label>
+            <Select id="edit-c-stage" value={stage} onChange={(e) => setStage(e.target.value as CustomerStage)}>
+              {CUSTOMER_STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {customerStageLabels[s]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-c-source">Por dónde llegó</Label>
+            <Select id="edit-c-source" value={source} onChange={(e) => setSource(e.target.value as LeadSource | "")}>
+              <option value="">—</option>
+              {LEAD_SOURCES.map((s) => (
+                <option key={s} value={s}>
+                  {leadSourceLabels[s]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-c-next">Próximo contacto</Label>
+            <Input
+              id="edit-c-next"
+              type="date"
+              value={nextContactAt}
+              onChange={(e) => setNextContactAt(e.target.value)}
+            />
           </div>
           <div>
             <Label htmlFor="edit-c-taxid">RUT / identificación</Label>

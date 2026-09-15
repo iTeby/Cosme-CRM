@@ -13,8 +13,8 @@ export default async function CustomersPage() {
   }
 
   const customers = await prisma.customer.findMany({
-    orderBy: { name: "asc" },
-    include: { _count: { select: { sales: true } } },
+    orderBy: [{ nextContactAt: "asc" }, { name: "asc" }],
+    include: { _count: { select: { sales: true, quotes: true } } },
   });
 
   return <CustomerManagement customers={JSON.parse(JSON.stringify(customers))} />;

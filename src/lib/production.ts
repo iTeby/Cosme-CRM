@@ -230,6 +230,10 @@ export async function applyProduction(tx: Tx, input: ApplyProductionInput) {
             userId,
             productionId: order.id,
             sku: skuById.get(ingredient.variantId),
+            // La vigencia de los lotes se mira al día de la hornada, no al
+            // momento en que se registra: una producción anotada tarde
+            // consume lo que estaba vigente ese día.
+            ahora: producedOn ?? new Date(),
           });
         } else {
           await applyMovement(tx, {

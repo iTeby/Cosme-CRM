@@ -35,11 +35,16 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { name, taxId, phone, email, address, notes } = parsed.data;
+  const { name, contactName, stage, source, nextContactAt, taxId, phone, email, address, notes } =
+    parsed.data;
 
   const customer = await prisma.customer.create({
     data: {
       name,
+      contactName: contactName || null,
+      stage,
+      source: source || null,
+      nextContactAt,
       taxId: taxId || null,
       phone: phone || null,
       email: email || null,

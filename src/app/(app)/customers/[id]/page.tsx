@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { currentShift } from "@/lib/cash";
 import { CustomerDetail } from "@/components/customer-detail";
+import { availableDiagnosticCredit } from "@/lib/diagnostic-credit";
 
 export default async function CustomerDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -25,6 +26,30 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         orderBy: { createdAt: "desc" },
         include: { items: true },
       },
+      quotes: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          currency: true,
+          totalAmount: true,
+          validUntil: true,
+          createdAt: true,
+        },
+      },
+      subscriptions: {
+        orderBy: { renewsAt: "asc" },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          currency: true,
+          amount: true,
+          renewsAt: true,
+        },
+      },
+      answers: { select: { questionId: true, answer: true } },
       ...(canViewPayments
         ? {
             payments: {
@@ -44,6 +69,16 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
 
   const data = JSON.parse(JSON.stringify(customer));
 
+  // El guion de calificación es el mismo para todos; las respuestas son del cliente.
+  const questions = await prisma.qualificationQuestion.findMany({
+    where: { active: true },
+    orderBy: { position: "asc" },
+    select: { id: true, position: true, block: true, text: true, reason: true },
+  });
+  const credit = canViewPayments
+    ? await availableDiagnosticCredit(prisma, customer.id)
+    : { amount: 0, saleId: null };
+
   // Abono a cuenta: no hay una venta que determine la bodega, así que la caja
   // es la de la bodega por defecto, igual que en POST /api/payments.
   const bodega = canViewPayments
@@ -58,6 +93,9 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
       canViewPayments={canViewPayments}
       canManagePayments={can(session.user.role, "managePayments")}
       cashShiftOpen={turnoAbierto !== null}
+      questions={questions}
+      answers={data.answers ?? []}
+      diagnosticCredit={credit.amount}
     />
   );
 }

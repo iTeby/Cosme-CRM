@@ -41,13 +41,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { name, taxId, phone, email, address, notes, active } = parsed.data;
+  const { name, contactName, stage, source, nextContactAt, taxId, phone, email, address, notes, active } =
+    parsed.data;
 
   try {
     const customer = await prisma.customer.update({
       where: { id: params.id },
       data: {
         name,
+        contactName: contactName || null,
+        stage,
+        source: source || null,
+        nextContactAt,
         taxId: taxId || null,
         phone: phone || null,
         email: email || null,

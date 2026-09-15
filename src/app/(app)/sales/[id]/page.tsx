@@ -35,6 +35,7 @@ export default async function SaleDetailPage({ params }: { params: { id: string 
           }
         : {}),
       ...(canViewDte ? { dtes: { orderBy: { createdAt: "desc" } } } : {}),
+      invoices: { orderBy: { issuedAt: "desc" } },
     },
   });
 
@@ -57,9 +58,11 @@ export default async function SaleDetailPage({ params }: { params: { id: string 
         ...data,
         paidAmount: canViewPayments ? data.paidAmount : "0",
         payments: data.payments ?? [],
+        invoices: data.invoices ?? [],
       }}
       canManage={can(session.user.role, "manageSales")}
       canViewPayments={canViewPayments}
+      canManageInvoices={can(session.user.role, "manageInvoices")}
       canManagePayments={can(session.user.role, "managePayments")}
       cashShiftOpen={turnoAbierto !== null}
       dte={
