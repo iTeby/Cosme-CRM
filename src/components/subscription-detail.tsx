@@ -143,7 +143,7 @@ export function SubscriptionDetail({
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/subscriptions" className="text-xs font-medium text-slate-400 hover:text-brand-700">
             ← Volver a suscripciones
@@ -169,7 +169,7 @@ export function SubscriptionDetail({
 
       <Card>
         {!editing ? (
-          <CardContent className="flex items-start justify-between py-4">
+          <CardContent className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
             <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm md:grid-cols-3">
               <div>
                 <dt className="text-xs uppercase tracking-wide text-slate-400">Inicio</dt>

@@ -44,7 +44,7 @@ export function CustomerManagement({ customers }: { customers: CustomerRow[] }) 
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-brand-900">Clientes</h1>
           <p className="text-sm text-slate-500">
@@ -204,7 +204,7 @@ function AddCustomerForm({ onSaved }: { onSaved: () => void }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <Label htmlFor="c-name">Negocio</Label>
               <Input id="c-name" required value={name} onChange={(e) => setName(e.target.value)} />
@@ -252,7 +252,7 @@ function AddCustomerForm({ onSaved }: { onSaved: () => void }) {
                 placeholder="Opcional"
               />
             </div>
-            <div className="col-span-2">
+            <div className="md:col-span-2">
               <Label htmlFor="c-address">Dirección</Label>
               <Input
                 id="c-address"

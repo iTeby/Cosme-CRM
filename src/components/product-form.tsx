@@ -107,7 +107,7 @@ export function ProductForm() {
             <Label htmlFor="name">Nombre del producto</Label>
             <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="category">Categoría</Label>
               <Select
@@ -175,7 +175,7 @@ export function ProductForm() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor={`sku-${index}`}>SKU</Label>
                   <Input

@@ -113,7 +113,7 @@ export function QuoteDetail({
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/quotes" className="text-xs font-medium text-slate-400 hover:text-brand-700">
             ← Volver a cotizaciones
@@ -242,7 +242,7 @@ export function QuoteDetail({
                 <p className="text-sm text-slate-500">
                   Se crea la venta en pesos con estas líneas. Los servicios no tocan stock.
                 </p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <Label htmlFor="cv-po">Orden de compra del cliente</Label>
                     <Input

@@ -154,7 +154,7 @@ export function CustomerDetail({
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/customers" className="text-xs font-medium text-slate-400 hover:text-brand-700">
             ← Volver a clientes
@@ -525,7 +525,7 @@ function CustomerFields({
   if (!editing) {
     return (
       <Card>
-        <CardContent className="flex items-start justify-between py-4">
+        <CardContent className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
           <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Etapa</dt>
@@ -579,7 +579,7 @@ function CustomerFields({
   return (
     <Card>
       <CardContent className="space-y-4 py-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <Label htmlFor="edit-c-name">Negocio / nombre</Label>
             <Input id="edit-c-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -630,11 +630,11 @@ function CustomerFields({
             <Label htmlFor="edit-c-email">Correo</Label>
             <Input id="edit-c-email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
-          <div className="col-span-2">
+          <div className="md:col-span-2">
             <Label htmlFor="edit-c-address">Dirección</Label>
             <Input id="edit-c-address" value={address} onChange={(e) => setAddress(e.target.value)} />
           </div>
-          <div className="col-span-2">
+          <div className="md:col-span-2">
             <Label htmlFor="edit-c-notes">Notas</Label>
             <Input id="edit-c-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>

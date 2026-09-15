@@ -189,7 +189,7 @@ export function SaleForm({ customers, variants }: { customers: Customer[]; varia
                     </button>
                   )}
                 </div>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                   <div className="col-span-2">
                     <Label htmlFor={`item-variant-${index}`}>Producto (SKU)</Label>
                     <Select

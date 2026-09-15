@@ -242,7 +242,7 @@ function AddUserForm({ onSaved }: { onSaved: () => void }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <Label htmlFor="u-name">Nombre</Label>
               <Input id="u-name" required value={name} onChange={(e) => setName(e.target.value)} />

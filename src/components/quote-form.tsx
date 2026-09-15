@@ -127,8 +127,8 @@ export function QuoteForm({
         <CardHeader>
           <CardTitle>Cliente y condiciones</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4">
-          <div className="col-span-2">
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
             <Label htmlFor="q-customer">Cliente</Label>
             <Select id="q-customer" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
               {customers.map((c) => (
@@ -152,7 +152,7 @@ export function QuoteForm({
             <Label htmlFor="q-valid">Válida hasta</Label>
             <Input id="q-valid" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
           </div>
-          <div className="col-span-2">
+          <div className="md:col-span-2">
             <Label htmlFor="q-notes">Notas para el cliente</Label>
             <Input id="q-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" />
           </div>

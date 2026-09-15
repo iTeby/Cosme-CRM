@@ -171,7 +171,7 @@ export function InvoiceCard({
 
         {canManage && open && (
           <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <Label htmlFor="inv-number">Folio SII</Label>
                 <Input id="inv-number" required value={number} onChange={(e) => setNumber(e.target.value)} />
@@ -195,7 +195,7 @@ export function InvoiceCard({
                   IVA {formatCurrency(taxFor(neto))} · Total {formatCurrency(neto + taxFor(neto))}
                 </p>
               </div>
-              <div className="col-span-3">
+              <div className="sm:col-span-3">
                 <Label htmlFor="inv-url">Enlace al PDF en Google Drive</Label>
                 <Input
                   id="inv-url"

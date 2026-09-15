@@ -49,7 +49,7 @@ export function SupplierDetail({
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link href="/suppliers" className="text-xs font-medium text-slate-400 hover:text-brand-700">
             ← Volver a proveedores

@@ -160,7 +160,7 @@ export default async function DashboardPage() {
         <p className="text-sm text-slate-500">Lo que hay que mover hoy.</p>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="py-5">

@@ -61,7 +61,7 @@ export function ProductDetail({
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link href="/products" className="text-xs font-medium text-slate-400 hover:text-brand-700">
             ← Volver a productos
@@ -161,7 +161,7 @@ function ProductFields({
   if (!editing) {
     return (
       <Card>
-        <CardContent className="flex items-start justify-between py-4">
+        <CardContent className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
           <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">Categoría</dt>
@@ -205,7 +205,7 @@ function ProductFields({
           <Label htmlFor="edit-name">Nombre</Label>
           <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <Label htmlFor="edit-category">Categoría</Label>
             <Select
@@ -403,7 +403,7 @@ function VariantRow({
               haría la caja impracticable.
             </p>
             {tracksLots && (
-              <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor={`vida-${variant.id}`}>Vida útil (días)</Label>
                   <Input
@@ -558,7 +558,7 @@ function AddVariantForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <Label htmlFor="new-sku">SKU</Label>
               <Input id="new-sku" required value={sku} onChange={(e) => setSku(e.target.value)} />
