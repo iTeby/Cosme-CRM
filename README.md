@@ -3,7 +3,7 @@
 CRM interno de Cosme SpA: control de inventario para e-commerce multicanal, con
 ventas, compras, clientes, proveedores y reportes.
 
-En producción: https://cosme-crm-green.vercel.app
+En producción: https://cosmespa.vercel.app
 
 ## Stack
 

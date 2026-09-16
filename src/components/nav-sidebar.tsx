@@ -29,6 +29,7 @@ type NavLink = {
 // dormantLinks a navLinks.
 const navLinks: NavLink[] = [
   { href: "/dashboard", label: "Panel", permission: null },
+  { href: "/whatsapp", label: "WhatsApp", permission: null },
   { href: "/products", label: "Productos", permission: "viewCatalog" },
   { href: "/customers", label: "Clientes", permission: "manageCustomers" },
   { href: "/quotes", label: "Cotizaciones", permission: "viewQuotes" },
@@ -51,9 +52,11 @@ const dormantLinks: NavLink[] = [
 export function NavSidebar({
   userName,
   userRole,
+  userEmail,
 }: {
   userName: string;
   userRole: UserRole;
+  userEmail?: string;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -65,6 +68,7 @@ export function NavSidebar({
   }, [pathname]);
 
   const visibleLinks = navLinks.filter((link) => {
+    if (link.href === "/whatsapp") return userEmail?.toLowerCase() === "isebi@me.com";
     if (link.permission === null) return true;
     const requeridos = Array.isArray(link.permission) ? link.permission : [link.permission];
     return requeridos.some((permiso) => can(userRole, permiso));

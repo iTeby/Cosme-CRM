@@ -4,7 +4,7 @@ import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Cosme CRM",
-  description: "Control de inventario y gestión comercial",
+  description: "Control de Gestión de Cosme SpA.",
 };
 
 export default function RootLayout({

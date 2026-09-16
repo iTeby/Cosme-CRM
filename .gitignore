@@ -29,3 +29,5 @@ next-env.d.ts
 /prisma/dev.db
 .env.*
 !.env.example
+.vercel
+.env*

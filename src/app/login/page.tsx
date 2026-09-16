@@ -13,8 +13,8 @@ export default async function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <Logo variant="light" className="h-10 w-auto" />
-          <h1 className="mt-3 text-2xl font-semibold text-white">
-            Control de inventario
+          <h1 className="mt-6 text-2xl font-semibold leading-tight text-white">
+            Control de Gestión
           </h1>
         </div>
         <div className="rounded-xl bg-white p-6 shadow-xl">

@@ -12,6 +12,7 @@ export default withAuth({
 
 export const config = {
   matcher: [
+    "/whatsapp/:path*",
     "/dashboard/:path*",
     "/products/:path*",
     "/inventory/:path*",
