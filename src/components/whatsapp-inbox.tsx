@@ -193,8 +193,15 @@ export function WhatsAppInbox() {
       <aside className="rounded-xl border bg-white p-3">
         <div role="tablist" aria-label="Vista de conversaciones" className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1">
           {([["bandeja", "Bandeja"], ["archivadas", "Archivadas"]] as const).map(([clave, rotulo]) =>
-            <button key={clave} role="tab" aria-selected={vista === clave} disabled={busy}
-              onClick={() => { if (vista !== clave) { setVista(clave); setSelected(""); setNotice(""); } }}
+            <button key={clave} role="tab" aria-selected={vista === clave}
+              onClick={() => {
+                if (vista === clave) return;
+                // Vaciar antes de pedir: si no, durante el viaje al servidor se
+                // sigue viendo la lista de la otra pestaña y parece que ambas
+                // tienen lo mismo.
+                setContacts([]); setLoaded(false); setDetail(null);
+                setVista(clave); setSelected(""); setNotice(""); setError("");
+              }}
               className={`flex-1 rounded-md px-3 py-1.5 text-sm ${vista === clave ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{rotulo}</button>)}
         </div>
         <label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones{pendientes > 0 && <> · <span className="font-semibold text-emerald-700">{pendientes} sin leer</span></>}{urgentes > 0 && <> · <span className="font-semibold text-red-700">{urgentes} por vencer</span></>}</p>
