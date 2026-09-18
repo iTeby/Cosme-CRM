@@ -7,7 +7,11 @@ async function proxy(req: NextRequest, { params }: { params: { path?: string[] }
   const json = (error: string, status: number) => NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
   if (!(await canAccessWhatsApp())) return json("Acceso reservado al propietario", 403);
   const path = params.path ?? [];
-  if (path.length > 1 || (path.length === 1 && !/^\d{7,20}$/.test(path[0]))) return json("Ruta no válida", 404);
+  // Se permite "metricas" además del teléfono: es de solo lectura y no recibe
+  // cuerpo, así que la validación del POST de más abajo la sigue cubriendo.
+  const permitida = path.length === 0 || (path.length === 1 && (/^\d{7,20}$/.test(path[0]) || path[0] === "metricas"));
+  if (!permitida) return json("Ruta no válida", 404);
+  if (path[0] === "metricas" && req.method !== "GET") return json("Ruta no válida", 405);
   const secret = process.env.WHATSAPP_INTEGRATION_SECRET;
   if (!secret) return json("La conexión con WhatsApp aún no está configurada", 503);
   let body: string | undefined;

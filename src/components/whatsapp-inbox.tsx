@@ -2,7 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Contact = { wa_id: string; declared_name: string | null; profile_name: string | null; need: string | null; status: string; summary?: string; last_inbound_at: string };
+type Contact = { wa_id: string; declared_name: string | null; profile_name: string | null; need: string | null; business_name?: string | null; status: string; summary?: string; probable_service?: string | null; urgency?: string | null; last_inbound_at: string; window_minutes_left?: number; can_reply?: boolean };
+type Metricas = {
+  resumen: { contactos_total: number; nuevos_30d: number; nuevos_30d_previos: number; tasa_conversacion: number; tasa_derivacion: number; ventanas_por_vencer: number; ventanas_vencidas_sin_respuesta: number; mensajes_por_contacto: number };
+  perdidas: { wa_id: string; negocio: string | null; necesidad: string | null; dias: number }[];
+  salud: { alertas_fallidas: number; sheets_pendientes: number; resumenes_generados: number };
+};
+const URGENCIAS: Record<string, number> = { alta: 0, media: 1, baja: 2 };
+const reloj = (min?: number) => {
+  if (min === undefined || min <= 0) return null;
+  const h = Math.floor(min / 60);
+  return h > 0 ? `${h} h ${String(min % 60).padStart(2, "0")} m` : `${min} m`;
+};
 type Detail = { contact: Contact; canReply: boolean; messages: { message_id: string; direction: string; body: string; recorded_at: string }[]; summary: { summary: string; next_action: string; missing_information: string } | null };
 const name = (c: Contact) => c.declared_name || c.profile_name || `+${c.wa_id}`;
 const date = (s: string) => new Date(s).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
@@ -16,6 +27,7 @@ async function api(path = "", init?: RequestInit) {
 
 export function WhatsAppInbox() {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [metricas, setMetricas] = useState<Metricas | null>(null);
   const [selected, setSelected] = useState("");
   const [detail, setDetail] = useState<Detail | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -28,9 +40,15 @@ export function WhatsAppInbox() {
   const reload = useCallback(async () => {
     const gen = ++generation.current;
     try {
-      const [list, current] = await Promise.all([api(), selected ? api(`/${selected}`) : Promise.resolve(null)]);
+      // Las métricas no bloquean la bandeja: si el endpoint falla, la lista se
+      // muestra igual y solo desaparece la tira de arriba.
+      const [list, current, stats] = await Promise.all([
+        api(),
+        selected ? api(`/${selected}`) : Promise.resolve(null),
+        api("/metricas").catch(() => null),
+      ]);
       if (gen !== generation.current) return;
-      setContacts(list.contacts); setDetail(current); setError(""); setLoaded(true);
+      setContacts(list.contacts); setDetail(current); setMetricas(stats); setError(""); setLoaded(true);
     } catch (e) { if (gen === generation.current) { setError((e as Error).message); setLoaded(true); } }
   }, [selected]);
   useEffect(() => {
@@ -49,13 +67,56 @@ export function WhatsAppInbox() {
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  const visible = contacts.filter(c => `${name(c)} ${c.wa_id} ${c.need || ""}`.toLowerCase().includes(search.toLowerCase()));
+  // Antes ordenaba por fecha del último mensaje. Ahora manda la ventana de 24 h:
+  // primero lo que se cierra pronto, y a igualdad de plazo, la urgencia de la IA.
+  const visible = contacts
+    .filter(c => `${name(c)} ${c.wa_id} ${c.need || ""} ${c.business_name || ""} ${c.probable_service || ""}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const abierta = (c: Contact) => (c.can_reply ? 0 : 1);
+      if (abierta(a) !== abierta(b)) return abierta(a) - abierta(b);
+      const u = (c: Contact) => URGENCIAS[(c.urgency || "").toLowerCase()] ?? 1;
+      if (a.can_reply && b.can_reply) {
+        const dif = (a.window_minutes_left ?? 0) - (b.window_minutes_left ?? 0);
+        if (Math.abs(dif) > 60) return dif;
+        return u(a) - u(b);
+      }
+      return Date.parse(b.last_inbound_at) - Date.parse(a.last_inbound_at);
+    });
+  const urgentes = visible.filter(c => c.can_reply && (c.window_minutes_left ?? 0) < 240).length;
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold text-slate-900">WhatsApp</h1><p className="text-sm text-slate-500">Conversaciones de Cosme · Actualización cada 30 segundos</p></div><button onClick={() => void reload()} className="rounded-lg border bg-white px-4 py-2 text-sm">Actualizar</button></div>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
     {notice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{notice}</p>}
+    {metricas && <section aria-label="Resumen de la operación" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-slate-200 sm:grid-cols-3 lg:grid-cols-6">
+      {[
+        { n: metricas.resumen.ventanas_por_vencer, t: "Se cierran en 4 h", ojo: metricas.resumen.ventanas_por_vencer > 0 },
+        { n: metricas.resumen.ventanas_vencidas_sin_respuesta, t: "Vencidas sin responder", ojo: metricas.resumen.ventanas_vencidas_sin_respuesta > 0 },
+        { n: metricas.resumen.nuevos_30d, t: "Nuevos en 30 días" },
+        { n: `${metricas.resumen.tasa_conversacion}%`, t: "Pasan del hola" },
+        { n: `${metricas.resumen.tasa_derivacion}%`, t: "Piden hablar contigo" },
+        { n: metricas.salud.alertas_fallidas, t: "Alertas sin llegar", ojo: metricas.salud.alertas_fallidas > 0 },
+      ].map(k => <div key={k.t} className="bg-white p-3">
+        <b className={`block text-xl font-semibold tabular-nums ${k.ojo ? "text-red-700" : "text-slate-900"}`}>{k.n}</b>
+        <span className="text-xs text-slate-500">{k.t}</span>
+      </div>)}
+    </section>}
+
+    {metricas && metricas.perdidas.length > 0 && <details className="rounded-xl border bg-amber-50 p-3 text-amber-900">
+      <summary className="cursor-pointer text-sm font-medium">
+        {metricas.perdidas.length} {metricas.perdidas.length === 1 ? "conversación se cerró" : "conversaciones se cerraron"} sin que alcanzaras a responder
+      </summary>
+      <ul className="mt-2 space-y-1 text-sm">
+        {metricas.perdidas.map(p => <li key={p.wa_id}>
+          {p.negocio || `+${p.wa_id}`} · {p.necesidad || "sin necesidad informada"} · hace {p.dias} {p.dias === 1 ? "día" : "días"}
+        </li>)}
+      </ul>
+      <p className="mt-2 text-xs">La ventana de WhatsApp dura 24 horas desde el último mensaje del cliente. Pasado ese plazo hace falta una plantilla aprobada, y esa sí se cobra.</p>
+    </details>}
+
     <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="rounded-xl border bg-white p-3"><label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones · {contacts.filter(c => c.status === "NUEVO").length} nuevas</p><div className="max-h-[65vh] space-y-2 overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><strong className="block truncate">{name(c)}</strong><span className="block text-xs text-slate-500">{c.status.replaceAll("_", " ")} · {date(c.last_inbound_at)}</span><span className="mt-1 block truncate text-sm text-slate-600">{c.summary || c.need || "Sin resumen todavía"}</span></button>)}{!visible.length && <p className="p-3 text-sm text-slate-500">{loaded ? "No hay conversaciones para mostrar." : "Cargando…"}</p>}</div></aside>
+      <aside className="rounded-xl border bg-white p-3"><label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones · {contacts.filter(c => c.status === "NUEVO").length} nuevas{urgentes > 0 && <> · <span className="font-semibold text-red-700">{urgentes} por vencer</span></>}</p><div className="max-h-[65vh] space-y-2 overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><span className="flex items-baseline justify-between gap-2"><strong className="truncate">{name(c)}</strong>{c.can_reply
+  ? <span className={`shrink-0 text-xs font-semibold tabular-nums ${(c.window_minutes_left ?? 0) < 240 ? "text-red-700" : "text-slate-500"}`}>{reloj(c.window_minutes_left)}</span>
+  : <span className="shrink-0 text-xs text-slate-400">cerrada</span>}</span><span className="mt-0.5 block text-xs text-slate-500">{c.business_name || c.status.replaceAll("_", " ")}{c.probable_service ? ` · ${c.probable_service}` : ""}{c.urgency?.toLowerCase() === "alta" ? <span className="ml-1 font-semibold text-red-700">urgente</span> : null}</span><span className="mt-1 block truncate text-sm text-slate-600">{c.summary || c.need || "Sin resumen todavía"}</span></button>)}{!visible.length && <p className="p-3 text-sm text-slate-500">{loaded ? "No hay conversaciones para mostrar." : "Cargando…"}</p>}</div></aside>
       <section className="min-w-0 rounded-xl border bg-white p-4">{!detail ? <p className="py-20 text-center text-slate-500">{selected ? "Cargando conversación…" : "Selecciona una conversación para responder."}</p> : <>
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{name(detail.contact)}</h2><p className="text-sm text-slate-500">+{detail.contact.wa_id} · {detail.contact.status.replaceAll("_", " ")}</p></div><button disabled={busy} onClick={() => void action("take")} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Tomar conversación</button></div>
         <div className="my-4 rounded-lg bg-slate-50 p-3"><div className="flex items-center justify-between gap-2"><strong className="text-sm">Resumen del cliente</strong><button disabled={busy} onClick={() => void action("summary")} className="text-xs text-emerald-700">Actualizar resumen</button></div><p className="mt-2 text-sm">{detail.summary?.summary || "Sin resumen todavía."}</p>{detail.summary && <p className="mt-2 text-xs text-slate-500">Siguiente paso: {detail.summary.next_action}<br />Por confirmar: {detail.summary.missing_information}</p>}</div>
