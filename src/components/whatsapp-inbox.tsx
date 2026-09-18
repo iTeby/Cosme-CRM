@@ -159,11 +159,11 @@ export function WhatsAppInbox() {
     });
   const urgentes = visible.filter(c => c.can_reply && (c.window_minutes_left ?? 0) < 240).length;
   const pendientes = visible.filter(c => c.can_reply && sinLeer(c)).length;
-  return <div className="space-y-5">
+  return <div className="min-w-0 space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold text-slate-900">WhatsApp</h1><p className="text-sm text-slate-500">Conversaciones de Cosme · Actualización cada 30 segundos</p></div><button onClick={() => void reload()} className="rounded-lg border bg-white px-4 py-2 text-sm">Actualizar</button></div>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
     {notice && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{notice}</p>}
-    {metricas && <section aria-label="Resumen de la operación" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-slate-200 sm:grid-cols-3 lg:grid-cols-6">
+    {metricas && <section aria-label="Resumen de la operación" className="grid min-w-0 grid-cols-2 gap-px overflow-hidden rounded-xl border bg-slate-200 sm:grid-cols-3 lg:grid-cols-6">
       {[
         { n: metricas.resumen.ventanas_por_vencer, t: "Se cierran en 4 h", ojo: metricas.resumen.ventanas_por_vencer > 0 },
         { n: metricas.resumen.ventanas_vencidas_sin_respuesta, t: "Vencidas sin responder", ojo: metricas.resumen.ventanas_vencidas_sin_respuesta > 0 },
@@ -173,7 +173,7 @@ export function WhatsAppInbox() {
         { n: metricas.salud.alertas_fallidas, t: "Alertas sin llegar", ojo: metricas.salud.alertas_fallidas > 0 },
       ].map(k => <div key={k.t} className="bg-white p-3">
         <b className={`block text-xl font-semibold tabular-nums ${k.ojo ? "text-red-700" : "text-slate-900"}`}>{k.n}</b>
-        <span className="text-xs text-slate-500">{k.t}</span>
+        <span className="block text-xs leading-tight text-slate-500">{k.t}</span>
       </div>)}
     </section>}
 
@@ -189,8 +189,8 @@ export function WhatsAppInbox() {
       <p className="mt-2 text-xs">La ventana de WhatsApp dura 24 horas desde el último mensaje del cliente. Pasado ese plazo hace falta una plantilla aprobada, y esa sí se cobra.</p>
     </details>}
 
-    <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="rounded-xl border bg-white p-3">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="min-w-0 rounded-xl border bg-white p-3">
         <div role="tablist" aria-label="Vista de conversaciones" className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1">
           {([["bandeja", "Bandeja"], ["archivadas", "Archivadas"]] as const).map(([clave, rotulo]) =>
             <button key={clave} role="tab" aria-selected={vista === clave}
@@ -205,7 +205,7 @@ export function WhatsAppInbox() {
               className={`flex-1 rounded-md px-3 py-1.5 text-sm ${vista === clave ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{rotulo}</button>)}
         </div>
         <label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones{pendientes > 0 && <> · <span className="font-semibold text-emerald-700">{pendientes} sin leer</span></>}{urgentes > 0 && <> · <span className="font-semibold text-red-700">{urgentes} por vencer</span></>}</p>
-        {vista === "bandeja" && contacts.some(c => !c.can_reply) && <button disabled={busy} onClick={() => void archivarCerradas()} className="mb-2 w-full rounded-lg border border-dashed px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">Archivar las {contacts.filter(c => !c.can_reply).length} cerradas</button>}<div className="max-h-[65vh] space-y-2 overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><span className="flex items-baseline justify-between gap-2"><strong className={`truncate ${vista === "bandeja" && c.can_reply && sinLeer(c) ? "font-bold text-slate-900" : ""}`}>{vista === "bandeja" && c.can_reply && sinLeer(c) && <span aria-label="Sin leer" title="Te escribieron y todavía no respondes" className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-600 align-middle" />}{name(c)}</strong>{c.can_reply
+        {vista === "bandeja" && contacts.some(c => !c.can_reply) && <button disabled={busy} onClick={() => void archivarCerradas()} className="mb-2 w-full rounded-lg border border-dashed px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">Archivar las {contacts.filter(c => !c.can_reply).length} cerradas</button>}<div className="space-y-2 overflow-x-hidden lg:max-h-[65vh] lg:overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full min-w-0 overflow-hidden rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><span className="flex min-w-0 items-baseline justify-between gap-2"><strong className={`min-w-0 truncate ${vista === "bandeja" && c.can_reply && sinLeer(c) ? "font-bold text-slate-900" : ""}`}>{vista === "bandeja" && c.can_reply && sinLeer(c) && <span aria-label="Sin leer" title="Te escribieron y todavía no respondes" className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-600 align-middle" />}{name(c)}</strong>{c.can_reply
   ? <span className={`shrink-0 text-xs font-semibold tabular-nums ${(c.window_minutes_left ?? 0) < 240 ? "text-red-700" : "text-slate-500"}`}>{reloj(c.window_minutes_left)}</span>
   : <span className="shrink-0 text-xs text-slate-400">cerrada</span>}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{[util(c.business_name) && corto(util(c.business_name)!), util(c.probable_service)].filter(Boolean).join(" · ") || c.status.replaceAll("_", " ")}{c.urgency?.toLowerCase() === "alta" ? <span className="ml-1 font-semibold text-red-700">urgente</span> : null}</span><span className="mt-1 block truncate text-sm text-slate-700">{c.ultimo_mensaje ? <><span className="text-slate-400">Cliente: </span>{c.ultimo_mensaje}</> : (c.summary || c.need || "Sin mensajes todavía")}</span>{c.ultimo_mensaje && (c.summary || c.need) && <span className="mt-0.5 block truncate text-xs text-slate-400">{c.summary || c.need}</span>}</button>)}{!visible.length && <p className="p-3 text-sm text-slate-500">{!loaded ? "Cargando…" : vista === "archivadas" ? "No hay conversaciones archivadas." : "No hay conversaciones para mostrar."}</p>}</div></aside>
       <section className="min-w-0 rounded-xl border bg-white p-4">{!detail ? <p className="py-20 text-center text-slate-500">{selected ? "Cargando conversación…" : "Selecciona una conversación para responder."}</p> : <>
