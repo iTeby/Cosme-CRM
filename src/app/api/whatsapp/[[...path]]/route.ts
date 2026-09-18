@@ -24,7 +24,10 @@ async function proxy(req: NextRequest, { params }: { params: { path?: string[] }
     body = JSON.stringify({ action: input.action, message: input.message });
   }
   try {
-    const upstream = await fetch(`https://clientes.cosmespa.cl/integrations/crm${path.length ? `/${path[0]}` : ""}`, {
+    // ?archivadas=1 es el único parámetro que se deja pasar: es de solo lectura y
+    // es lo que permite tener una vista de archivadas con vuelta atrás.
+    const consulta = req.method === "GET" && path.length === 0 && req.nextUrl.searchParams.get("archivadas") === "1" ? "?archivadas=1" : "";
+    const upstream = await fetch(`https://clientes.cosmespa.cl/integrations/crm${path.length ? `/${path[0]}` : ""}${consulta}`, {
       method: req.method, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(25000),
       headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" }, body,
     });

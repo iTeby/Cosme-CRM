@@ -44,6 +44,10 @@ export function WhatsAppInbox() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  // Dos vistas y no una. "No es un prospecto" escondía para siempre y no había
+  // forma de revertirlo desde ninguna pantalla: la acción de restaurar existía en
+  // el Worker desde el principio, pero no había botón que llegara a ella.
+  const [vista, setVista] = useState<"bandeja" | "archivadas">("bandeja");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,26 +60,30 @@ export function WhatsAppInbox() {
       // Las métricas no bloquean la bandeja: si el endpoint falla, la lista se
       // muestra igual y solo desaparece la tira de arriba.
       const [list, current, stats] = await Promise.all([
-        api(),
+        api(vista === "archivadas" ? "?archivadas=1" : ""),
         selected ? api(`/${selected}`) : Promise.resolve(null),
         api("/metricas").catch(() => null),
       ]);
       if (gen !== generation.current) return;
       setContacts(list.contacts); setDetail(current); setMetricas(stats); setError(""); setLoaded(true);
     } catch (e) { if (gen === generation.current) { setError((e as Error).message); setLoaded(true); } }
-  }, [selected]);
+  }, [selected, vista]);
   useEffect(() => {
     setDetail(null); void reload();
     const tick = setInterval(() => { if (!document.hidden) void reload(); }, 30000);
     return () => { clearInterval(tick); generation.current++; };
   }, [reload]);
-  async function action(action: string) {
-    const id = selected;
+  async function action(action: string, waId?: string) {
+    const id = waId ?? selected;
     setBusy(true); setNotice(""); setError("");
     try {
       await api(`/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, message: drafts[id] || "" }) });
       if (action === "reply") setDrafts(old => ({ ...old, [id]: "" }));
-      setNotice(action === "reply" ? "Respuesta aceptada por WhatsApp." : action === "take" ? "Conversación a tu cargo. El bot queda pausado." : action === "ocultar" ? "Fuera de la bandeja. La conversación no se borró." : "Resumen actualizado.");
+      setNotice(action === "reply" ? "Respuesta aceptada por WhatsApp."
+        : action === "take" ? "Conversación a tu cargo. El bot queda pausado."
+        : action === "ocultar" ? "Archivada. Está en la pestaña Archivadas y vuelve sola si la persona escribe de nuevo."
+        : action === "mostrar" ? "De vuelta en la bandeja."
+        : "Resumen actualizado.");
       await reload();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
@@ -103,6 +111,22 @@ export function WhatsAppInbox() {
       setNotice(data.creado ? `${data.nombre} quedó en Clientes, etapa Calificado.` : `${data.nombre} ya estaba en Clientes.`);
     } catch (e) { setError((e as Error).message); }
     finally { setVinculando(false); }
+  }
+
+  async function archivarCerradas() {
+    const cerradas = contacts.filter(c => !c.can_reply);
+    if (!cerradas.length) return;
+    if (!confirm(`Archivar ${cerradas.length} ${cerradas.length === 1 ? "conversación cerrada" : "conversaciones cerradas"}. Quedan en la pestaña Archivadas y vuelven solas si la persona escribe. ¿Seguir?`)) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      for (const c of cerradas) {
+        await api(`/${c.wa_id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "ocultar", message: "Cerrada y archivada en lote desde el CRM" }) });
+      }
+      setSelected("");
+      setNotice(`${cerradas.length} ${cerradas.length === 1 ? "conversación archivada" : "conversaciones archivadas"}.`);
+      await reload();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
   }
 
   const visible = contacts
@@ -150,15 +174,25 @@ export function WhatsAppInbox() {
     </details>}
 
     <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="rounded-xl border bg-white p-3"><label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones · {contacts.filter(c => c.status === "NUEVO").length} nuevas{urgentes > 0 && <> · <span className="font-semibold text-red-700">{urgentes} por vencer</span></>}</p><div className="max-h-[65vh] space-y-2 overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><span className="flex items-baseline justify-between gap-2"><strong className="truncate">{name(c)}</strong>{c.can_reply
+      <aside className="rounded-xl border bg-white p-3">
+        <div role="tablist" aria-label="Vista de conversaciones" className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1">
+          {([["bandeja", "Bandeja"], ["archivadas", "Archivadas"]] as const).map(([clave, rotulo]) =>
+            <button key={clave} role="tab" aria-selected={vista === clave} disabled={busy}
+              onClick={() => { if (vista !== clave) { setVista(clave); setSelected(""); setNotice(""); } }}
+              className={`flex-1 rounded-md px-3 py-1.5 text-sm ${vista === clave ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{rotulo}</button>)}
+        </div>
+        <label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones · {contacts.filter(c => c.status === "NUEVO").length} nuevas{urgentes > 0 && <> · <span className="font-semibold text-red-700">{urgentes} por vencer</span></>}</p>
+        {vista === "bandeja" && contacts.some(c => !c.can_reply) && <button disabled={busy} onClick={() => void archivarCerradas()} className="mb-2 w-full rounded-lg border border-dashed px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">Archivar las {contacts.filter(c => !c.can_reply).length} cerradas</button>}<div className="max-h-[65vh] space-y-2 overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><span className="flex items-baseline justify-between gap-2"><strong className="truncate">{name(c)}</strong>{c.can_reply
   ? <span className={`shrink-0 text-xs font-semibold tabular-nums ${(c.window_minutes_left ?? 0) < 240 ? "text-red-700" : "text-slate-500"}`}>{reloj(c.window_minutes_left)}</span>
-  : <span className="shrink-0 text-xs text-slate-400">cerrada</span>}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{[util(c.business_name) && corto(util(c.business_name)!), util(c.probable_service)].filter(Boolean).join(" · ") || c.status.replaceAll("_", " ")}{c.urgency?.toLowerCase() === "alta" ? <span className="ml-1 font-semibold text-red-700">urgente</span> : null}</span><span className="mt-1 block truncate text-sm text-slate-600">{c.summary || c.need || "Sin resumen todavía"}</span></button>)}{!visible.length && <p className="p-3 text-sm text-slate-500">{loaded ? "No hay conversaciones para mostrar." : "Cargando…"}</p>}</div></aside>
+  : <span className="shrink-0 text-xs text-slate-400">cerrada</span>}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{[util(c.business_name) && corto(util(c.business_name)!), util(c.probable_service)].filter(Boolean).join(" · ") || c.status.replaceAll("_", " ")}{c.urgency?.toLowerCase() === "alta" ? <span className="ml-1 font-semibold text-red-700">urgente</span> : null}</span><span className="mt-1 block truncate text-sm text-slate-600">{c.summary || c.need || "Sin resumen todavía"}</span></button>)}{!visible.length && <p className="p-3 text-sm text-slate-500">{!loaded ? "Cargando…" : vista === "archivadas" ? "No hay conversaciones archivadas." : "No hay conversaciones para mostrar."}</p>}</div></aside>
       <section className="min-w-0 rounded-xl border bg-white p-4">{!detail ? <p className="py-20 text-center text-slate-500">{selected ? "Cargando conversación…" : "Selecciona una conversación para responder."}</p> : <>
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{name(detail.contact)}</h2><p className="text-sm text-slate-500">+{detail.contact.wa_id} · {detail.contact.status.replaceAll("_", " ")}</p></div><div className="flex flex-wrap gap-2">
           <button disabled={busy} onClick={() => void action("take")} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Tomar conversación</button>
           <button disabled={busy || vinculando} onClick={() => void aCliente(false)} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">{vinculando ? "Guardando…" : "Pasar a Clientes"}</button>
           <button disabled={busy || vinculando} onClick={() => void aCliente(true)} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-800 disabled:opacity-50">Crear cotización</button>
-          <button disabled={busy} onClick={() => { if (confirm("Sacar esta conversación de la bandeja. No se borra nada y se puede revertir desde la base. ¿Seguir?")) { setSelected(""); void action("ocultar"); } }} className="rounded-lg border px-3 py-2 text-sm text-slate-500 disabled:opacity-50">No es un prospecto</button>
+          {vista === "bandeja"
+            ? <button disabled={busy} onClick={() => { if (confirm("Archivar esta conversación. No se borra nada: queda en la pestaña Archivadas y vuelve sola a la bandeja si la persona escribe de nuevo. ¿Seguir?")) { setSelected(""); void action("ocultar"); } }} className="rounded-lg border px-3 py-2 text-sm text-slate-500 disabled:opacity-50">Archivar</button>
+            : <button disabled={busy} onClick={() => { setSelected(""); void action("mostrar"); }} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-800 disabled:opacity-50">Devolver a la bandeja</button>}
         </div></div>
         <div className="my-4 rounded-lg bg-slate-50 p-3"><div className="flex items-center justify-between gap-2"><strong className="text-sm">Resumen del cliente</strong><button disabled={busy} onClick={() => void action("summary")} className="text-xs text-emerald-700">Actualizar resumen</button></div><p className="mt-2 text-sm">{detail.summary?.summary || "Sin resumen todavía."}</p>{detail.summary && <>
           {(util(detail.summary.probable_service) || util(detail.summary.urgency)) && <p className="mt-2 flex flex-wrap gap-2 text-xs">
