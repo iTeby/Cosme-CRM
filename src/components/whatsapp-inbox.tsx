@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Contact = { wa_id: string; declared_name: string | null; profile_name: string | null; need: string | null; business_name?: string | null; status: string; summary?: string; probable_service?: string | null; urgency?: string | null; last_inbound_at: string; window_minutes_left?: number; can_reply?: boolean };
+type Contact = { wa_id: string; declared_name: string | null; profile_name: string | null; need: string | null; business_name?: string | null; status: string; summary?: string; probable_service?: string | null; urgency?: string | null; last_inbound_at: string; window_minutes_left?: number; can_reply?: boolean; ultimo_mensaje?: string | null; requested_human_at?: string | null };
+
+// "Sin leer" no existe en WhatsApp Cloud API, así que se define con lo que sí
+// se sabe: el cliente escribió después de que tomaste la conversación, o nunca
+// la tomaste. Eso es exactamente lo que hay que mirar primero.
+const sinLeer = (c: Contact) => {
+  const tomada = Date.parse(c.requested_human_at ?? "");
+  const escrito = Date.parse(c.last_inbound_at);
+  if (!Number.isFinite(escrito)) return false;
+  return !Number.isFinite(tomada) || escrito > tomada;
+};
 type Metricas = {
   resumen: { contactos_total: number; nuevos_30d: number; nuevos_30d_previos: number; tasa_conversacion: number; tasa_derivacion: number; ventanas_por_vencer: number; ventanas_vencidas_sin_respuesta: number; mensajes_por_contacto: number };
   perdidas: { wa_id: string; negocio: string | null; necesidad: string | null; dias: number }[];
@@ -134,6 +144,8 @@ export function WhatsAppInbox() {
     .sort((a, b) => {
       const abierta = (c: Contact) => (c.can_reply ? 0 : 1);
       if (abierta(a) !== abierta(b)) return abierta(a) - abierta(b);
+      // Lo que no has leído va arriba de todo dentro de las conversaciones vivas.
+      if (a.can_reply && b.can_reply && sinLeer(a) !== sinLeer(b)) return sinLeer(a) ? -1 : 1;
       const u = (c: Contact) => URGENCIAS[(c.urgency || "").toLowerCase()] ?? 1;
       if (a.can_reply && b.can_reply) {
         const dif = (a.window_minutes_left ?? 0) - (b.window_minutes_left ?? 0);
@@ -143,6 +155,7 @@ export function WhatsAppInbox() {
       return Date.parse(b.last_inbound_at) - Date.parse(a.last_inbound_at);
     });
   const urgentes = visible.filter(c => c.can_reply && (c.window_minutes_left ?? 0) < 240).length;
+  const pendientes = visible.filter(c => c.can_reply && sinLeer(c)).length;
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold text-slate-900">WhatsApp</h1><p className="text-sm text-slate-500">Conversaciones de Cosme · Actualización cada 30 segundos</p></div><button onClick={() => void reload()} className="rounded-lg border bg-white px-4 py-2 text-sm">Actualizar</button></div>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
@@ -181,10 +194,10 @@ export function WhatsAppInbox() {
               onClick={() => { if (vista !== clave) { setVista(clave); setSelected(""); setNotice(""); } }}
               className={`flex-1 rounded-md px-3 py-1.5 text-sm ${vista === clave ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>{rotulo}</button>)}
         </div>
-        <label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones · {contacts.filter(c => c.status === "NUEVO").length} nuevas{urgentes > 0 && <> · <span className="font-semibold text-red-700">{urgentes} por vencer</span></>}</p>
-        {vista === "bandeja" && contacts.some(c => !c.can_reply) && <button disabled={busy} onClick={() => void archivarCerradas()} className="mb-2 w-full rounded-lg border border-dashed px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">Archivar las {contacts.filter(c => !c.can_reply).length} cerradas</button>}<div className="max-h-[65vh] space-y-2 overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><span className="flex items-baseline justify-between gap-2"><strong className="truncate">{name(c)}</strong>{c.can_reply
+        <label className="text-sm font-medium" htmlFor="wa-search">Buscar conversaciones</label><input id="wa-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nombre, teléfono o necesidad" className="mb-3 mt-2 w-full rounded-lg border p-2 text-sm" /><p className="mb-2 text-xs text-slate-500">{contacts.length} conversaciones{pendientes > 0 && <> · <span className="font-semibold text-emerald-700">{pendientes} sin leer</span></>}{urgentes > 0 && <> · <span className="font-semibold text-red-700">{urgentes} por vencer</span></>}</p>
+        {vista === "bandeja" && contacts.some(c => !c.can_reply) && <button disabled={busy} onClick={() => void archivarCerradas()} className="mb-2 w-full rounded-lg border border-dashed px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">Archivar las {contacts.filter(c => !c.can_reply).length} cerradas</button>}<div className="max-h-[65vh] space-y-2 overflow-y-auto">{visible.map(c => <button key={c.wa_id} disabled={busy} onClick={() => { setSelected(c.wa_id); setNotice(""); }} aria-pressed={selected === c.wa_id} className={`w-full rounded-lg border p-3 text-left ${selected === c.wa_id ? "border-emerald-600 bg-emerald-50" : "border-slate-100 hover:bg-slate-50"}`}><span className="flex items-baseline justify-between gap-2"><strong className={`truncate ${vista === "bandeja" && c.can_reply && sinLeer(c) ? "font-bold text-slate-900" : ""}`}>{vista === "bandeja" && c.can_reply && sinLeer(c) && <span aria-label="Sin leer" title="Te escribieron y todavía no respondes" className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-600 align-middle" />}{name(c)}</strong>{c.can_reply
   ? <span className={`shrink-0 text-xs font-semibold tabular-nums ${(c.window_minutes_left ?? 0) < 240 ? "text-red-700" : "text-slate-500"}`}>{reloj(c.window_minutes_left)}</span>
-  : <span className="shrink-0 text-xs text-slate-400">cerrada</span>}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{[util(c.business_name) && corto(util(c.business_name)!), util(c.probable_service)].filter(Boolean).join(" · ") || c.status.replaceAll("_", " ")}{c.urgency?.toLowerCase() === "alta" ? <span className="ml-1 font-semibold text-red-700">urgente</span> : null}</span><span className="mt-1 block truncate text-sm text-slate-600">{c.summary || c.need || "Sin resumen todavía"}</span></button>)}{!visible.length && <p className="p-3 text-sm text-slate-500">{!loaded ? "Cargando…" : vista === "archivadas" ? "No hay conversaciones archivadas." : "No hay conversaciones para mostrar."}</p>}</div></aside>
+  : <span className="shrink-0 text-xs text-slate-400">cerrada</span>}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{[util(c.business_name) && corto(util(c.business_name)!), util(c.probable_service)].filter(Boolean).join(" · ") || c.status.replaceAll("_", " ")}{c.urgency?.toLowerCase() === "alta" ? <span className="ml-1 font-semibold text-red-700">urgente</span> : null}</span><span className="mt-1 block truncate text-sm text-slate-700">{c.ultimo_mensaje ? <><span className="text-slate-400">Cliente: </span>{c.ultimo_mensaje}</> : (c.summary || c.need || "Sin mensajes todavía")}</span>{c.ultimo_mensaje && (c.summary || c.need) && <span className="mt-0.5 block truncate text-xs text-slate-400">{c.summary || c.need}</span>}</button>)}{!visible.length && <p className="p-3 text-sm text-slate-500">{!loaded ? "Cargando…" : vista === "archivadas" ? "No hay conversaciones archivadas." : "No hay conversaciones para mostrar."}</p>}</div></aside>
       <section className="min-w-0 rounded-xl border bg-white p-4">{!detail ? <p className="py-20 text-center text-slate-500">{selected ? "Cargando conversación…" : "Selecciona una conversación para responder."}</p> : <>
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{name(detail.contact)}</h2><p className="text-sm text-slate-500">+{detail.contact.wa_id} · {detail.contact.status.replaceAll("_", " ")}</p></div><div className="flex flex-wrap gap-2">
           <button disabled={busy} onClick={() => void action("take")} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50">Tomar conversación</button>
