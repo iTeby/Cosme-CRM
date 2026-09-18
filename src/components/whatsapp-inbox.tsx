@@ -2,17 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Contact = { wa_id: string; declared_name: string | null; profile_name: string | null; need: string | null; business_name?: string | null; status: string; summary?: string; probable_service?: string | null; urgency?: string | null; last_inbound_at: string; window_minutes_left?: number; can_reply?: boolean; ultimo_mensaje?: string | null; requested_human_at?: string | null };
+type Contact = { wa_id: string; declared_name: string | null; profile_name: string | null; need: string | null; business_name?: string | null; status: string; summary?: string; probable_service?: string | null; urgency?: string | null; last_inbound_at: string; window_minutes_left?: number; can_reply?: boolean; ultimo_mensaje?: string | null; requested_human_at?: string | null; last_reply_at?: string | null };
 
 // "Sin leer" no existe en WhatsApp Cloud API, así que se define con lo que sí
 // se sabe: el cliente escribió después de que tomaste la conversación, o nunca
 // la tomaste. Eso es exactamente lo que hay que mirar primero.
-const sinLeer = (c: Contact) => {
-  const tomada = Date.parse(c.requested_human_at ?? "");
-  const escrito = Date.parse(c.last_inbound_at);
-  if (!Number.isFinite(escrito)) return false;
-  return !Number.isFinite(tomada) || escrito > tomada;
-};
+// Se compara contra last_reply_at, que se actualiza en CADA respuesta humana.
+// La primera versión usaba requested_human_at, que solo se fija la primera vez
+// que tomas la conversación: una derivada hace tres días quedaba con el punto
+// encendido para siempre, respondieras lo que respondieras.
+// Sin comparar relojes: cada mensaje entrante borra la marca de respuesta en el
+// Worker, y responder la vuelve a poner. Comparar last_inbound_at con
+// last_reply_at fallaba porque Meta entrega las marcas al segundo y las nuestras
+// al milisegundo.
+const sinLeer = (c: Contact) => !c.last_reply_at;
 type Metricas = {
   resumen: { contactos_total: number; nuevos_30d: number; nuevos_30d_previos: number; tasa_conversacion: number; tasa_derivacion: number; ventanas_por_vencer: number; ventanas_vencidas_sin_respuesta: number; mensajes_por_contacto: number };
   perdidas: { wa_id: string; negocio: string | null; necesidad: string | null; dias: number }[];
