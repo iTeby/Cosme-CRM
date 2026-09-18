@@ -20,7 +20,7 @@ async function proxy(req: NextRequest, { params }: { params: { path?: string[] }
     const expected = req.nextUrl.origin;
     if (origin !== expected) return json("Origen no permitido", 403);
     const input = await req.json().catch(() => null);
-    if (!input || !["reply", "take", "summary"].includes(input.action) || (input.action === "reply" && (typeof input.message !== "string" || !input.message.trim() || input.message.length > 900))) return json("Solicitud no válida", 400);
+    if (!input || !["reply", "take", "summary", "ocultar", "mostrar"].includes(input.action) || (input.action === "reply" && (typeof input.message !== "string" || !input.message.trim() || input.message.length > 900))) return json("Solicitud no válida", 400);
     body = JSON.stringify({ action: input.action, message: input.message });
   }
   try {
