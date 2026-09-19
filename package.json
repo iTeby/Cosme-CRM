@@ -12,6 +12,7 @@
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:prod": "tsx prisma/seed-prod.ts",
+    "db:seed:preguntas": "tsx prisma/seed-preguntas.ts",
     "postinstall": "prisma generate",
     "test": "vitest run",
     "test:watch": "vitest",

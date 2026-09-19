@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -69,7 +70,10 @@ export function QualificationScript({
           <CardTitle>Guion de calificación</CardTitle>
           <p className="mt-1 text-xs text-slate-500">
             {respondidas} de {questions.length} respondidas. Se hace por WhatsApp, en orden, apenas
-            alguien escribe.
+            alguien escribe.{" "}
+            <Link href="/guion" className="font-medium text-brand-700 hover:underline">
+              Mandárselas por WhatsApp o correo
+            </Link>
           </p>
         </div>
         {canManage && !editing && (

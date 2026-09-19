@@ -32,6 +32,7 @@ const navLinks: NavLink[] = [
   { href: "/whatsapp", label: "WhatsApp", permission: null },
   { href: "/products", label: "Productos", permission: "viewCatalog" },
   { href: "/customers", label: "Clientes", permission: "manageCustomers" },
+  { href: "/guion", label: "Guion", permission: "manageCustomers" },
   { href: "/quotes", label: "Cotizaciones", permission: "viewQuotes" },
   { href: "/sales", label: "Ventas", permission: "viewSales" },
   { href: "/subscriptions", label: "Suscripciones", permission: "viewSubscriptions" },
