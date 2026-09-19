@@ -27,8 +27,20 @@ export function LoginForm() {
 
     setLoading(false);
 
+    // Distinguir los dos casos no es un lujo: cuando el CRM se cayó por un
+    // problema del servidor, esta pantalla decía que la contraseña estaba mala
+    // y mandó el diagnóstico en la dirección equivocada durante media hora.
+    //
+    // NextAuth devuelve "CredentialsSignin" cuando el usuario o la clave no
+    // calzan. Cualquier otro error —o un estado 500— es un fallo del sistema,
+    // y decirlo permite a quien lo ve saber que no es culpa suya.
     if (result?.error) {
-      setError("Correo o contraseña incorrectos.");
+      const credencialesMalas = result.error === "CredentialsSignin" && result.status !== 500;
+      setError(
+        credencialesMalas
+          ? "Correo o contraseña incorrectos."
+          : "No pudimos verificar tus datos: el sistema tuvo un problema. Vuelve a intentar en un momento; si sigue igual, no es tu contraseña.",
+      );
       return;
     }
 

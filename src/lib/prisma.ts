@@ -29,7 +29,17 @@ const obtenerCliente = cache(() => {
   }
 
   return new PrismaClient({
-    adapter: new PrismaNeon({ connectionString, max: 1, maxUses: 1 }),
+    // max: cuántas conexiones puede tener abiertas a la vez ESTA petición.
+    // Estuvo en 1 y fue un error caro: con una sola conexión, un
+    // `Promise.all` de cuatro consultas se forma en fila igual y paga cuatro
+    // viajes a la base uno tras otro. La página de reportes tardaba 2,6 s por
+    // esto. Con 5 caben en paralelo las consultas de la página más pesada.
+    //
+    // maxUses: 1 se mantiene. Es la recomendación de OpenNext y evita que una
+    // conexión sobreviva a la petición que la abrió, que es lo que falla de
+    // forma intermitente en un Worker. Cuesta un saludo de red por consulta,
+    // pero ahora esos saludos ocurren en paralelo y no en fila.
+    adapter: new PrismaNeon({ connectionString, max: 5, maxUses: 1 }),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 });

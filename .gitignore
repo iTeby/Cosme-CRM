@@ -36,3 +36,5 @@ next-env.d.ts
 .dev.vars
 cloudflare-env.d.ts
 .wrangler/
+
+respaldo-neon-*.json
