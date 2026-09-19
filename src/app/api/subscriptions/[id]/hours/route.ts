@@ -8,7 +8,8 @@ import { subscriptionHoursSchema } from "@/lib/validation";
 
 // Registrar horas usadas de una suscripción. El contador de la suscripción y
 // la bitácora se escriben juntos, así nunca discrepan.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageSubscriptions")) {

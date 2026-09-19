@@ -6,11 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { QuoteForm } from "@/components/quote-form";
 
-export default async function NewQuotePage({
-  searchParams,
-}: {
-  searchParams: { customerId?: string };
-}) {
+export default async function NewQuotePage(
+  props: {
+    searchParams: Promise<{ customerId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!can(session.user.role, "manageQuotes")) {

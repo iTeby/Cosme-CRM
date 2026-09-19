@@ -5,11 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { SubscriptionList } from "@/components/subscription-list";
 
-export default async function SubscriptionsPage({
-  searchParams,
-}: {
-  searchParams: { customerId?: string };
-}) {
+export default async function SubscriptionsPage(
+  props: {
+    searchParams: Promise<{ customerId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!can(session.user.role, "viewSubscriptions")) {

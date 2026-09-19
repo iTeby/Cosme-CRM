@@ -7,7 +7,8 @@ import { setStockAbsolute } from "@/lib/inventory";
 import { variantAddSchema } from "@/lib/validation";
 
 // Agrega una variante/SKU nueva a un producto existente.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageProducts")) {

@@ -14,7 +14,8 @@ import { round2 } from "@/lib/decimal";
 // No es la boleta electrónica: es el papel que se le pasa al cliente. Si la
 // venta tiene un documento emitido, se imprime su folio y, cuando el
 // proveedor devuelva el timbre, el PDF417 que lo hace válido.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "viewSales")) {

@@ -10,7 +10,8 @@ import { round2, toNumber } from "@/lib/decimal";
 
 // El comprobante del arqueo. Con el turno abierto sale como corte X, que es
 // una lectura y no cierra nada; con el turno cerrado, el cierre definitivo.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "viewCashShift")) {

@@ -14,7 +14,8 @@ const RENEWAL_SKU = "SER-91-SUS";
 // el monto en pesos), la fecha de renovación avanza un año, las horas usadas
 // vuelven a cero y la suscripción queda ligada a esa venta. El cobro se
 // registra después, como en cualquier venta.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageSubscriptions") || !can(session.user.role, "manageSales")) {

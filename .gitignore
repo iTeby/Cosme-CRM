@@ -31,3 +31,8 @@ next-env.d.ts
 !.env.example
 .vercel
 .env*
+
+.open-next/
+.dev.vars
+cloudflare-env.d.ts
+.wrangler/

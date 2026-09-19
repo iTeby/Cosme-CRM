@@ -1,0 +1,30 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cosme-crm",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2026-08-20",
+	// nodejs_compat: el CRM usa librerías que esperan APIs de Node (exceljs para
+	// leer los .xlsx de importación, bcryptjs para las claves).
+	// global_fetch_strictly_public: hace que un fetch salga a internet de verdad
+	// en vez de resolverse dentro de Cloudflare. Hace falta porque la bandeja de
+	// WhatsApp llama a clientes.cosmespa.cl, que es otro Worker de esta misma
+	// cuenta; sin esta bandera la llamada se puede enredar consigo misma.
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	// Igual que los demos: apagado para que nadie pueda entrar por la puerta de
+	// atrás de workers.dev y saltarse las reglas puestas sobre el dominio.
+	"workers_dev": false,
+	"routes": [{ "pattern": "crm.cosmespa.cl", "custom_domain": true }],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	// Las que NO son secretas van acá, a la vista y versionadas.
+	// NEXTAUTH_URL tiene que calzar exacto con el dominio por donde se entra: si
+	// no calza, el login redirige en círculos y no da ningún error claro. Es la
+	// forma más común de romper esto.
+	"vars": {
+		"NEXTAUTH_URL": "https://crm.cosmespa.cl",
+		"NEGOCIO_NOMBRE": "Cosme SpA"
+	},
+	"observability": { "enabled": true }
+}

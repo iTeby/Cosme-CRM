@@ -8,7 +8,8 @@ import { qualificationAnswersSchema } from "@/lib/validation";
 // Guarda las respuestas del guion de calificación de un interesado. Una
 // respuesta vacía borra la anterior. Si el interesado estaba en NUEVO y ya
 // respondió algo, pasa a CALIFICADO solo: es la definición de la etapa.
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageCustomers")) {

@@ -7,7 +7,8 @@ import { closeShift, ShiftAlreadyClosedError } from "@/lib/cash";
 import { shiftCloseSchema, primerMensaje } from "@/lib/validation";
 
 // Cerrar el turno con arqueo. El esperado se congela acá: ver src/lib/cash.ts.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageCashShift")) {

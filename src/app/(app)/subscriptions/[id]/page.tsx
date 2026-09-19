@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { SubscriptionDetail } from "@/components/subscription-detail";
 
-export default async function SubscriptionDetailPage({ params }: { params: { id: string } }) {
+export default async function SubscriptionDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!can(session.user.role, "viewSubscriptions")) {

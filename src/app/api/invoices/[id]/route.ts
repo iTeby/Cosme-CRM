@@ -6,7 +6,8 @@ import { can } from "@/lib/rbac";
 import { invoiceUpdateSchema } from "@/lib/validation";
 
 // Una factura no se borra: se anula. El enlace al PDF sí se puede corregir.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageInvoices")) {

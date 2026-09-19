@@ -8,7 +8,8 @@ import { removePayment, ShiftClosedError } from "@/lib/payments";
 // Deshacer un abono mal registrado devuelve el saldo a la venta. No es un
 // "borrar y olvidar": la fila se elimina y paidAmount baja en la misma
 // transacción, así que el snapshot nunca se despega de la suma de pagos.
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "managePayments")) {

@@ -7,7 +7,8 @@ import { currentShift } from "@/lib/cash";
 import { dteConfig } from "@/lib/dte";
 import { SaleDetail } from "@/components/sale-detail";
 
-export default async function SaleDetailPage({ params }: { params: { id: string } }) {
+export default async function SaleDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!can(session.user.role, "viewSales")) {

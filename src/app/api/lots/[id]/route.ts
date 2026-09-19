@@ -10,7 +10,8 @@ import { lotStatusSchema, primerMensaje } from "@/lib/validation";
 // Cambiar el estado NO mueve stock: lo bloqueado sigue estando en la bodega
 // y sigue contando en el inventario, solo deja de ofrecerse para la venta.
 // Botarlo es una merma, y esa se registra aparte y con su motivo.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageStock")) {

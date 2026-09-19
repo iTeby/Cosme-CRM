@@ -13,7 +13,8 @@ import {
 
 // La etiqueta de góndola de una variante, en el lenguaje de la etiquetadora
 // que haya: ZPL para una Zebra, ESC/POS para la impresora de boletas.
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "viewCatalog")) {

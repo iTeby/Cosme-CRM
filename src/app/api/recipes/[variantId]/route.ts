@@ -10,7 +10,8 @@ import { recipeUpsertSchema, primerMensaje } from "@/lib/validation";
 // los insumos completos en vez de hacer diferencias — son listas de tres o
 // cuatro líneas y el reemplazo evita estados intermedios raros.
 
-export async function GET(_req: NextRequest, { params }: { params: { variantId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ variantId: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "viewProduction")) {
@@ -26,7 +27,8 @@ export async function GET(_req: NextRequest, { params }: { params: { variantId: 
   return NextResponse.json(recipe);
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { variantId: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ variantId: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageRecipes")) {
@@ -97,7 +99,8 @@ export async function PUT(req: NextRequest, { params }: { params: { variantId: s
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { variantId: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ variantId: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageRecipes")) {

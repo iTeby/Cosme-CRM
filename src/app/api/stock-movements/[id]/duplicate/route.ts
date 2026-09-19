@@ -9,7 +9,8 @@ import { applyMovement, InsufficientStockError } from "@/lib/inventory";
 // y motivo) como un movimiento nuevo. La cantidad del original ya viene con
 // signo, así que se pasa como delta sin volver a interpretarla. Igual que
 // editar o eliminar, no aplica a movimientos generados por una venta o compra.
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "editStockMovements")) {

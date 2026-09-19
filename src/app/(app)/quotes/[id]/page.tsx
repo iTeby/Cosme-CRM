@@ -6,7 +6,8 @@ import { can } from "@/lib/rbac";
 import { availableDiagnosticCredit } from "@/lib/diagnostic-credit";
 import { QuoteDetail } from "@/components/quote-detail";
 
-export default async function QuoteDetailPage({ params }: { params: { id: string } }) {
+export default async function QuoteDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!can(session.user.role, "viewQuotes")) {

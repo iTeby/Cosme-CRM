@@ -7,7 +7,8 @@ import { currentShift } from "@/lib/cash";
 import { CustomerDetail } from "@/components/customer-detail";
 import { availableDiagnosticCredit } from "@/lib/diagnostic-credit";
 
-export default async function CustomerDetailPage({ params }: { params: { id: string } }) {
+export default async function CustomerDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!can(session.user.role, "manageCustomers")) {

@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { ProductDetail } from "@/components/product-detail";
 
-export default async function ProductDetailPage({ params }: { params: { id: string } }) {
+export default async function ProductDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!can(session.user.role, "viewCatalog")) {

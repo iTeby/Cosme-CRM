@@ -15,7 +15,8 @@ import { quoteConvertSchema } from "@/lib/validation";
 // del día), se descuenta stock solo de las líneas que lo llevan, se aplica el
 // crédito de Diagnóstico si corresponde, la cotización queda ACEPTADA y ligada
 // a la venta, y el interesado pasa a CLIENTE.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageSales") || !can(session.user.role, "manageQuotes")) {

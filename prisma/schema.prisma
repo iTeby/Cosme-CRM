@@ -10,8 +10,18 @@
 // aísla (filtro en la aplicación, RLS de Postgres o una base por cliente) y
 // el esquema no hay que tocarlo. No asumir protección que todavía no existe.
 
+// driverAdapters sigue siendo una función en vista previa en Prisma 6, y es
+// indispensable: un Worker de Cloudflare no puede abrir un socket TCP, así que
+// Prisma tiene que hablar con Neon a través de su driver serverless.
+//
+// Se usa Prisma 6 y NO 7 a propósito. Prisma 7 compila su motor de consultas
+// en WebAssembly al momento de ejecutar, y Cloudflare lo prohíbe: el error es
+// "Wasm code generation disallowed by embedder". Está reportado y sin arreglo
+// en prisma/orm#28657, verificado el 18-09-2026. No subir a 7 hasta que ese
+// issue esté cerrado y comprobado en un despliegue real.
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {

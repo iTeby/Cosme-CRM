@@ -7,7 +7,8 @@ import { quoteStatusSchema } from "@/lib/validation";
 
 // Cambios de estado manuales: enviada, rechazada, o de vuelta a borrador.
 // Aceptada no se marca a mano: la marca la conversión en venta.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   if (!can(session.user.role, "manageQuotes")) {
